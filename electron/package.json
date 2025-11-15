@@ -1,0 +1,21 @@
+{
+  "name": "short-link-service",
+  "version": "1.0.0",
+  "description": "短链接服务 Electron 应用",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:next\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev:next": "next dev",
+    "build": "next build && electron-builder"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "electron": "^latest",
+    "electron-builder": "^latest",
+    "concurrently": "^8.2.0",
+    "wait-on": "^7.0.1"
+  }
+}
