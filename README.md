@@ -37,10 +37,11 @@
 
 ### 本地开发
 
-\`\`\`bash
+```bash
 # 1. 克隆项目
 ```
 git clone https://github.com/leebro7/Vercel-Short_Link-text
+
 cd Vercel-Short_Link-text
 ```
 # 2. 安装依赖
@@ -55,13 +56,13 @@ EOF
 
 # 4. 启动开发服务器
 npm run dev
-\`\`\`
+```
 
 打开浏览器访问 [http://localhost:3000](http://localhost:3000)，默认管理员账号：`admin / admin123`
 
 ### 快速测试
 
-\`\`\`bash
+```bash
 # 首页创建短链接（无需登录）
 输入长链接 → 点击创建 → 获得短链接
 
@@ -70,7 +71,7 @@ npm run dev
 
 # 管理后台（需登录）
 点击"管理登录" → 使用 admin/admin123 登录 → 查看统计和管理
-\`\`\`
+```
 
 ## 📁 项目结构
 
@@ -106,13 +107,13 @@ short-link-service/
 ### 项目管理
 
 #### 获取所有项目
-\`\`\`http
+```http
 GET /api/items
-\`\`\`
+```
 **认证**: ✅ 需要管理员登录
 
 **响应**:
-\`\`\`json
+```json
 {
   "items": [
     {
@@ -127,10 +128,10 @@ GET /api/items
   ],
   "stats": { "totalItems": 10, "totalClicks": 156 }
 }
-\`\`\`
+```
 
 #### 创建项目
-\`\`\`http
+```http
 POST /api/items
 Content-Type: application/json
 
@@ -140,7 +141,7 @@ Content-Type: application/json
   "customSuffix": "my-link",
   "expiresInHours": 24
 }
-\`\`\`
+```
 
 **错误处理**:
 - `400` - 参数错误（URL 格式、后缀冲突、保留路由）
@@ -148,15 +149,15 @@ Content-Type: application/json
 - `500` - 服务器错误
 
 #### 删除项目
-\`\`\`http
+```http
 DELETE /api/items?shortCode=my-link
-\`\`\`
+```
 **认证**: ✅ 需要管理员登录
 
 ### 认证
 
 #### 登录
-\`\`\`http
+```http
 POST /api/auth/login
 Content-Type: application/json
 
@@ -164,12 +165,12 @@ Content-Type: application/json
   "username": "admin",
   "password": "admin123"
 }
-\`\`\`
+```
 
 #### 登出
-\`\`\`http
+```http
 POST /api/auth/logout
-\`\`\`
+```
 
 ## ⚙️ 环境变量
 
@@ -216,31 +217,31 @@ POST /api/auth/logout
 
 ### Vercel 部署（推荐）
 
-\`\`\`bash
+```bash
 # 1. 推送到 GitHub
 git push origin main
 
 # 2. Vercel 仪表板导入项目
 # 3. 配置环境变量并部署
-\`\`\`
+```
 
 详见 [DEPLOYMENT.md](./DEPLOYMENT.md)
 
 ### Docker 部署
 
-\`\`\`bash
+```bash
 docker build -t short-link .
 docker run -p 3000:3000 \
   -e BLOB_READ_WRITE_TOKEN=your_token \
   short-link
-\`\`\`
+```
 
 ### Electron 桌面应用
 
-\`\`\`bash
+```bash
 npm run build:electron
 # 输出在 dist/ 目录
-\`\`\`
+```
 
 ## ❓ 常见问题
 
