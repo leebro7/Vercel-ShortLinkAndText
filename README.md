@@ -39,9 +39,10 @@
 
 \`\`\`bash
 # 1. 克隆项目
-git clone <repository-url>
-cd short-link-service
-
+```
+git clone https://github.com/leebro7/Vercel-Short_Link-text
+cd Vercel-Short_Link-text
+```
 # 2. 安装依赖
 npm install
 
@@ -73,7 +74,7 @@ npm run dev
 
 ## 📁 项目结构
 
-\`\`\`
+```
 short-link-service/
 ├── app/
 │   ├── page.tsx                 # 首页 - 创建链接/文本
@@ -98,7 +99,7 @@ short-link-service/
 ├── electron/                    # Electron 配置
 ├── public/                      # 静态资源
 └── README.md / DEPLOYMENT.md    # 文档
-\`\`\`
+```
 
 ## 🔌 API 文档
 
