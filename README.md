@@ -40,7 +40,7 @@
 ```bash
 # 1. 克隆项目
 ```
-git clone https://github.com/leebro7/Vercel-Short_Link-text
+git clone https://github.com/leebro7/Vercel-ShortLinkAndText
 
 cd Vercel-Short_Link-text
 ```
@@ -56,6 +56,7 @@ EOF
 
 # 4. 启动开发服务器
 npm run dev
+vercel login
 ```
 
 打开浏览器访问 [http://localhost:3000](http://localhost:3000)，默认管理员账号：`admin / admin123`
