@@ -21,14 +21,14 @@ export function RecentLinks() {
   useEffect(() => {
     void (async () => {
       try {
-        const authRes = await fetch("/api/auth/check")
+        const authRes = await fetch("/api/auth/check", { credentials: "include" })
         const auth = (await authRes.json()) as { authenticated: boolean }
         setIsAuthenticated(auth.authenticated)
         if (!auth.authenticated) {
           setIsLoading(false)
           return
         }
-        const res = await fetch("/api/items")
+        const res = await fetch("/api/items", { credentials: "include" })
         const data = (await res.json()) as { items: Item[]; stats: typeof stats }
         setItems(data.items || [])
         if (data.stats) setStats(data.stats)
@@ -41,7 +41,7 @@ export function RecentLinks() {
 
     const onCreated = () => {
       void (async () => {
-        const res = await fetch("/api/items")
+        const res = await fetch("/api/items", { credentials: "include" })
         if (!res.ok) return
         const data = (await res.json()) as { items: Item[]; stats: typeof stats }
         setItems(data.items || [])
@@ -54,7 +54,10 @@ export function RecentLinks() {
 
   async function handleDelete(shortCode: string) {
     if (!confirm("确定要删除吗?")) return
-    const res = await fetch(`/api/items?shortCode=${shortCode}`, { method: "DELETE" })
+    const res = await fetch(`/api/items?shortCode=${shortCode}`, {
+      method: "DELETE",
+      credentials: "include",
+    })
     if (res.ok) {
       setItems((prev) => prev.filter((i) => i.shortCode !== shortCode))
       setStats((s) => ({ ...s, totalItems: s.totalItems - 1 }))

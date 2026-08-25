@@ -47,7 +47,10 @@ function clientUa(c: { req: { raw?: Request; header: (k: string) => string | und
   return c.req.header("user-agent") || undefined
 }
 
-function isSecure(c: { req: { url: string } }): boolean {
+function isSecure(c: { req: { url: string; header: (k: string) => string | undefined } }): boolean {
+  // 优先看 x-forwarded-proto (Vercel / 任何反代都会设)
+  const xfp = c.req.header("x-forwarded-proto")
+  if (xfp) return xfp.toLowerCase() === "https"
   try {
     return new URL(c.req.url).protocol === "https:"
   } catch {

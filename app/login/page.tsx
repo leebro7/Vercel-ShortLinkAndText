@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,7 +11,6 @@ import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 export default function LoginPage() {
-  const router = useRouter()
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -27,10 +25,12 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
+        credentials: "include",
       })
       if (response.ok) {
-        router.push("/")
-        router.refresh()
+        // 关键: 用 hard navigation, 确保新 cookie 被下一次请求带上。
+        // Next 16 RSC 的 router.push 可能复用 client cache, headers() 读不到新 cookie。
+        window.location.href = "/"
       } else {
         const data = await response.json().catch(() => ({}))
         setError(data.error || "登录失败")

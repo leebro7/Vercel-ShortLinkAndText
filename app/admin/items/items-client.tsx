@@ -36,7 +36,7 @@ export function ItemsClient({ initialItems }: { initialItems: Item[] }) {
   })
 
   async function refresh() {
-    const res = await fetch("/api/items")
+    const res = await fetch("/api/items", { credentials: "include" })
     if (!res.ok) return
     const data = (await res.json()) as { items: Item[] }
     setItems(data.items || [])
@@ -44,7 +44,10 @@ export function ItemsClient({ initialItems }: { initialItems: Item[] }) {
 
   async function handleDelete(shortCode: string) {
     if (!confirm(`确定要删除 /${shortCode} 吗?`)) return
-    const res = await fetch(`/api/items?shortCode=${shortCode}`, { method: "DELETE" })
+    const res = await fetch(`/api/items?shortCode=${shortCode}`, {
+      method: "DELETE",
+      credentials: "include",
+    })
     if (res.ok) {
       setItems((prev) => prev.filter((i) => i.shortCode !== shortCode))
     }
@@ -224,6 +227,7 @@ function EditDialog({ item, onClose, onSaved }: EditDialogProps) {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(patch),
+        credentials: "include",
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || "保存失败")
