@@ -32,19 +32,23 @@ export const apiApp = new Hono()
 /* ──────────────── helpers ──────────────── */
 
 function getCookie(c: { req: { raw?: Request; header: (k: string) => string | undefined } }): string | null {
-  return c.req.header("cookie") ?? null
+  // Hono on Vercel: c.req.header 在某些版本下不读 raw.headers。
+  // 两路都试, 优先 raw.Request.headers (Hono 不会拦截)。
+  return c.req.raw?.headers.get("cookie") ?? c.req.header("cookie") ?? null
 }
 
 function clientIp(c: { req: { raw?: Request; header: (k: string) => string | undefined } }): string | undefined {
   return (
+    c.req.raw?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.raw?.headers.get("x-real-ip") ||
     c.req.header("x-real-ip") ||
     undefined
   )
 }
 
 function clientUa(c: { req: { raw?: Request; header: (k: string) => string | undefined } }): string | undefined {
-  return c.req.header("user-agent") || undefined
+  return c.req.raw?.headers.get("user-agent") ?? c.req.header("user-agent") ?? undefined
 }
 
 function isSecure(c: { req: { url: string; header: (k: string) => string | undefined } }): boolean {
@@ -529,6 +533,29 @@ apiApp.get("/api/health", async (c) => {
   } catch (err) {
     return c.json({ ok: false, error: err instanceof Error ? err.message : "Unknown" }, 500)
   }
+})
+
+/**
+ * [DEBUG ONLY] 把请求里所有 header 完整 dump 出来
+ * 用于诊断 cookie / auth / IP 等问题
+ */
+apiApp.get("/api/__debug/headers", async (c) => {
+  const headers: Record<string, string> = {}
+  const raw = c.req.raw
+  if (raw) {
+    raw.headers.forEach((v, k) => {
+      headers[k] = v
+    })
+  }
+  // 与 c.req.header 对比
+  const viaHono: Record<string, string | undefined> = {
+    cookie: c.req.header("cookie"),
+    "x-forwarded-proto": c.req.header("x-forwarded-proto"),
+    "x-forwarded-for": c.req.header("x-forwarded-for"),
+    "user-agent": c.req.header("user-agent"),
+    host: c.req.header("host"),
+  }
+  return c.json({ viaRaw: headers, viaHono })
 })
 
 /* ──────────────── legacy redirect ──────────────── */
