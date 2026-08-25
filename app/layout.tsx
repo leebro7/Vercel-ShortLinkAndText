@@ -1,16 +1,27 @@
 import type React from "react"
 import type { Metadata } from "next"
-import { Geist, Geist_Mono } from "next/font/google"
+import { Source_Serif_4, JetBrains_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
-const _geist = Geist({ subsets: ["latin"] })
-const _geistMono = Geist_Mono({ subsets: ["latin"] })
+const sourceSerif = Source_Serif_4({
+  subsets: ["latin"],
+  variable: "--font-source-serif",
+  display: "swap",
+  weight: ["400", "500", "600", "700"],
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+  weight: ["400", "500", "600"],
+})
 
 export const metadata: Metadata = {
-  title: "短链接服务 - 简洁优雅的URL缩短工具",
-  description: "快速创建短链接，支持自定义后缀、过期时间和详细的点击统计。使用 Vercel Blob 构建，高性能、安全可靠。",
-  generator: "v0.app",
+  title: "短链接 · 温柔的工具",
+  description: "一个自托管的短链接与文本分享服务,长得像一封写给你的小纸条。",
 }
 
 export default function RootLayout({
@@ -19,9 +30,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="zh-CN">
-      <body className={`font-sans antialiased`}>
-        {children}
+    <html lang="zh-CN" suppressHydrationWarning className={`${sourceSerif.variable} ${jetbrainsMono.variable}`}>
+      <body className="font-serif antialiased">
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          {children}
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>

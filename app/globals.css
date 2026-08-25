@@ -3,80 +3,100 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * 设计语言:暖色调。
+ *
+ * 灵感来自 Notion Mail / Things 3 / HEY 的"温柔人文工具感"。
+ * - 主色相在 40-70 之间(橙-黄),L/C 都偏低,避免饱和度爆炸。
+ * - 背景以 warm off-white 为主,文本以 warm graphite 为主。
+ * - primary 是低饱和的赭橙,作为"动作色"而非品牌色。
+ * - mono 用 JetBrains Mono,衬线用 Source Serif 4。
+ */
+
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  /* 基础底色:奶白 */
+  --background: oklch(0.985 0.012 75);
+  --foreground: oklch(0.27 0.02 60);
+  /* 卡片:略浅一档,带一点黄 */
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+  --card-foreground: oklch(0.27 0.02 60);
+  /* popover 同 card */
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.27 0.02 60);
+  /* primary:暖赭橙(动作色) */
+  --primary: oklch(0.55 0.13 50);
+  --primary-foreground: oklch(0.985 0.012 75);
+  /* secondary:米色(背景/分块) */
+  --secondary: oklch(0.96 0.018 75);
+  --secondary-foreground: oklch(0.32 0.025 55);
+  /* muted:偏淡的灰米 */
+  --muted: oklch(0.95 0.015 75);
+  --muted-foreground: oklch(0.5 0.02 60);
+  /* accent:浅赭(高亮) */
+  --accent: oklch(0.93 0.04 65);
+  --accent-foreground: oklch(0.32 0.04 55);
+  /* destructive:暖红(错误) */
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.985 0.012 75);
+  --border: oklch(0.9 0.02 70);
+  --input: oklch(0.92 0.022 70);
+  --ring: oklch(0.65 0.08 55);
+  --chart-1: oklch(0.6 0.13 45);
+  --chart-2: oklch(0.65 0.1 75);
+  --chart-3: oklch(0.55 0.07 30);
+  --chart-4: oklch(0.7 0.08 90);
+  --chart-5: oklch(0.5 0.05 60);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.97 0.014 75);
+  --sidebar-foreground: oklch(0.27 0.02 60);
+  --sidebar-primary: oklch(0.55 0.13 50);
+  --sidebar-primary-foreground: oklch(0.985 0.012 75);
+  --sidebar-accent: oklch(0.93 0.04 65);
+  --sidebar-accent-foreground: oklch(0.32 0.04 55);
+  --sidebar-border: oklch(0.9 0.02 70);
+  --sidebar-ring: oklch(0.65 0.08 55);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  /* 暗模式:深赭底 */
+  --background: oklch(0.18 0.015 60);
+  --foreground: oklch(0.95 0.012 75);
+  --card: oklch(0.22 0.018 60);
+  --card-foreground: oklch(0.95 0.012 75);
+  --popover: oklch(0.22 0.018 60);
+  --popover-foreground: oklch(0.95 0.012 75);
+  --primary: oklch(0.78 0.1 60);
+  --primary-foreground: oklch(0.2 0.02 60);
+  --secondary: oklch(0.27 0.02 60);
+  --secondary-foreground: oklch(0.95 0.012 75);
+  --muted: oklch(0.27 0.02 60);
+  --muted-foreground: oklch(0.7 0.025 70);
+  --accent: oklch(0.32 0.03 55);
+  --accent-foreground: oklch(0.95 0.012 75);
+  --destructive: oklch(0.65 0.2 25);
+  --destructive-foreground: oklch(0.95 0.012 75);
+  --border: oklch(0.32 0.022 60);
+  --input: oklch(0.3 0.022 60);
+  --ring: oklch(0.6 0.07 55);
+  --chart-1: oklch(0.7 0.13 50);
+  --chart-2: oklch(0.72 0.1 80);
+  --chart-3: oklch(0.6 0.08 30);
+  --chart-4: oklch(0.78 0.08 90);
+  --chart-5: oklch(0.55 0.06 60);
+  --sidebar: oklch(0.22 0.018 60);
+  --sidebar-foreground: oklch(0.95 0.012 75);
+  --sidebar-primary: oklch(0.78 0.1 60);
+  --sidebar-primary-foreground: oklch(0.2 0.02 60);
+  --sidebar-accent: oklch(0.32 0.03 55);
+  --sidebar-accent-foreground: oklch(0.95 0.012 75);
+  --sidebar-border: oklch(0.32 0.022 60);
+  --sidebar-ring: oklch(0.6 0.07 55);
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-sans: 'Source Serif 4', 'Source Serif Pro', ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+  --font-serif: 'Source Serif 4', 'Source Serif Pro', ui-serif, Georgia, Cambria, 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', 'JetBrains Mono Fallback', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -119,7 +139,97 @@
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+  body {
+    @apply bg-background text-foreground font-serif;
+  }
+  code, pre, kbd, samp {
+    font-family: var(--font-mono);
+  }
+  /* h 系列:衬线粗体,留出"作品感" */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif;
+    letter-spacing: -0.01em;
+  }
+  /* 默认 button/input 字号略小一点,衬线显得温和 */
+  input, textarea, select {
+    @apply font-sans;
+  }
+}
+
+/* 受限 Markdown 渲染样式 */
+@layer components {
+  .md-prose {
+    color: var(--foreground);
+  }
+  .md-prose h1, .md-prose h2, .md-prose h3, .md-prose h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin-top: 1.5em;
+    margin-bottom: 0.5em;
+    line-height: 1.3;
+  }
+  .md-prose h1 { font-size: 1.6em; }
+  .md-prose h2 { font-size: 1.35em; }
+  .md-prose h3 { font-size: 1.15em; }
+  .md-prose p { margin: 0.8em 0; }
+  .md-prose a {
+    color: var(--primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .md-prose code {
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: var(--muted);
+    padding: 0.1em 0.35em;
+    border-radius: 0.25rem;
+  }
+  .md-prose pre {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    background: var(--muted);
+    padding: 1em;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin: 1em 0;
+  }
+  .md-prose pre code {
+    background: transparent;
+    padding: 0;
+  }
+  .md-prose ul, .md-prose ol {
+    margin: 0.8em 0;
+    padding-left: 1.5em;
+  }
+  .md-prose ul { list-style: disc; }
+  .md-prose ol { list-style: decimal; }
+  .md-prose li { margin: 0.3em 0; }
+  .md-prose blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 1em;
+    color: var(--muted-foreground);
+    font-style: italic;
+    margin: 1em 0;
+  }
+  .md-prose hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 2em 0;
+  }
+  .md-prose table {
+    border-collapse: collapse;
+    margin: 1em 0;
+    width: 100%;
+  }
+  .md-prose th, .md-prose td {
+    border: 1px solid var(--border);
+    padding: 0.4em 0.8em;
+    text-align: left;
+  }
+  .md-prose th { background: var(--muted); font-weight: 600; }
+  .md-prose img { max-width: 100%; height: auto; border-radius: 0.25rem; }
 }
