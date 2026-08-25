@@ -51,14 +51,18 @@ function clientUa(c: { req: { raw?: Request; header: (k: string) => string | und
   return c.req.raw?.headers.get("user-agent") ?? c.req.header("user-agent") ?? undefined
 }
 
-function isSecure(c: { req: { url: string; header: (k: string) => string | undefined } }): boolean {
-  // 优先看 x-forwarded-proto (Vercel / 任何反代都会设)
-  const xfp = c.req.header("x-forwarded-proto")
+function isSecure(c: { req: { url: string; raw?: Request; header: (k: string) => string | undefined } }): boolean {
+  // Vercel / Cloudflare / EdgeOne 反代后, c.req.url 可能是 http (Hono 内部生成的),
+  // 实际请求是 https。x-forwarded-proto 是反代一定会设的可靠信号。
+  // 但 Vercel 有时也不设 (罕见)。用 raw URL 兜底。
+  const xfp = c.req.raw?.headers.get("x-forwarded-proto") ?? c.req.header("x-forwarded-proto")
   if (xfp) return xfp.toLowerCase() === "https"
+  // 兜底: 看 VERCEL_ENV / NODE_ENV (Vercel production/Preview 都是 https)
+  if (process.env.VERCEL === "1") return true
   try {
     return new URL(c.req.url).protocol === "https:"
   } catch {
-    return false
+    return true
   }
 }
 
@@ -142,6 +146,13 @@ apiApp.post("/api/auth/login", async (c) => {
     }
     const setCookie = buildSetCookie(result.token, isSecure(c))
     console.log("[api/auth/login] set-cookie:", setCookie)
+    // [DEBUG] 显式验证 raw headers 看到 cookie
+    const rawCookie = c.req.raw?.headers.get("cookie")
+    const honoCookie = c.req.header("cookie")
+    console.log("[api/auth/login] incoming cookies:", {
+      raw: rawCookie ? rawCookie.slice(0, 80) : null,
+      hono: honoCookie ? honoCookie.slice(0, 80) : null,
+    })
     return new Response(JSON.stringify({ success: true, message: "登录成功", username: result.username }), {
       status: 200,
       headers: { "content-type": "application/json", "set-cookie": setCookie },
@@ -556,6 +567,28 @@ apiApp.get("/api/__debug/headers", async (c) => {
     host: c.req.header("host"),
   }
   return c.json({ viaRaw: headers, viaHono })
+})
+
+/**
+ * [DEBUG ONLY] 测试一个最简单的 cookie: 设个 test=ok, 再读回来
+ * 不依赖任何业务逻辑, 用于隔离"Set-Cookie 是不是真的被浏览器接受"
+ */
+apiApp.get("/api/__debug/set-test-cookie", async (c) => {
+  const cookie = `debug_test=ok; Path=/; HttpOnly; SameSite=Lax; Max-Age=300${isSecure(c) ? "; Secure" : ""}`
+  return new Response(JSON.stringify({ set: cookie, secure: isSecure(c) }), {
+    status: 200,
+    headers: { "content-type": "application/json", "set-cookie": cookie },
+  })
+})
+
+apiApp.get("/api/__debug/check-test-cookie", async (c) => {
+  const cookie = getCookie(c)
+  return c.json({
+    hasDebugTestCookie: Boolean(cookie?.includes("debug_test=ok")),
+    cookiePreview: cookie ? cookie.slice(0, 200) : null,
+    secure: isSecure(c),
+    xfp: c.req.raw?.headers.get("x-forwarded-proto") ?? c.req.header("x-forwarded-proto"),
+  })
 })
 
 /* ──────────────── legacy redirect ──────────────── */
