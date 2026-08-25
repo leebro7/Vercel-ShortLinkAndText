@@ -51,10 +51,20 @@ describe("getDataProvider", () => {
     expect(await getDataProvider()).toBeInstanceOf(UpstashRedisProvider)
   })
 
-  it("falls back to Vercel KV when no Upstash env", async () => {
+  it("falls back to KV_REST_API_* when no UPSTASH_* env (Marketplace behavior)", async () => {
     process.env.KV_REST_API_URL = "https://example.com"
     process.env.KV_REST_API_TOKEN = "token"
-    expect(await getDataProvider()).toBeInstanceOf(VercelKvProvider)
+    // Marketplace 注入 KV_REST_API_* 时,也用 UpstashRedisProvider
+    // (它们指向同一个 REST API)
+    expect(await getDataProvider()).toBeInstanceOf(UpstashRedisProvider)
+  })
+
+  it("UPSTASH_REDIS_REST_* takes priority over KV_REST_API_*", async () => {
+    process.env.UPSTASH_REDIS_REST_URL = "https://upstash.example.com"
+    process.env.UPSTASH_REDIS_REST_TOKEN = "upstash-token"
+    process.env.KV_REST_API_URL = "https://kv.example.com"
+    process.env.KV_REST_API_TOKEN = "kv-token"
+    expect(await getDataProvider()).toBeInstanceOf(UpstashRedisProvider)
   })
 
   it("throws when no provider configured", async () => {

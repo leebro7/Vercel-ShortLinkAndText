@@ -38,11 +38,13 @@ export interface DataProvider {
 /**
  * 单进程内选择 provider 的 key。读取顺序:
  * 1. process.env.DATA_PROVIDER(显式覆盖,例如 "memory" 用于测试)
- * 2. UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN(Vercel Marketplace,
- *    Free 计划推荐路径)
- * 3. KV_REST_API_URL + KV_REST_API_TOKEN(已 deprecated 的 Vercel KV,
- *    旧部署的兼容路径)
- * 4. 抛错
+ * 2. UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN — Upstash 风格
+ *    (Marketplace 在某些情况下会同时注入;若没有,fallback 到下一组)
+ * 3. KV_REST_API_URL + KV_REST_API_TOKEN — Vercel KV 风格
+ *    (Marketplace 实际默认注入的)
+ * 4. KV_URL — Upstash Marketplace 有时只给一个
+ * 上面 2-4 都用 @upstash/redis REST 客户端(同一套 API)
+ * 5. 抛错
  */
 let cached: DataProvider | null = null
 
@@ -76,19 +78,25 @@ export async function getDataProvider(): Promise<DataProvider> {
     return cached
   }
 
-  // 默认路径:Upstash Redis(Vercel Marketplace,Free 计划可用)
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  // 默认路径:Upstash Redis(Vercel Marketplace)。
+  // 兼容两套变量名:
+  //   1. UPSTASH_REDIS_REST_URL/TOKEN — Upstash 官方风格
+  //   2. KV_REST_API_URL/TOKEN — Vercel KV 风格(Marketplace 实际注入的)
+  // 它们指向同一个 Upstash REST API,可以互换。
+  const upstashUrl =
+    process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL ?? process.env.KV_URL
+  const upstashToken =
+    process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
+  if (upstashUrl && upstashToken) {
+    process.env.UPSTASH_REDIS_REST_URL = upstashUrl
+    process.env.UPSTASH_REDIS_REST_TOKEN = upstashToken
     const { UpstashRedisProvider } = await import("./upstash-redis")
     cached = new UpstashRedisProvider()
     return cached
   }
 
-  // 兼容旧 Vercel KV 部署
-  if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
-    const { VercelKvProvider } = await import("./vercel-kv")
-    cached = new VercelKvProvider()
-    return cached
-  }
+  // 显式 DATA_PROVIDER=vercel-kv 仍走老的 VercelKV 客户端
+  // (没显式声明时不再 fallback,因为 Marketplace 注入的 KV_* 与 Upstash API 一样)
 
   throw new Error(
     "No DataProvider configured. Install Upstash Redis from Vercel Marketplace, or set DATA_PROVIDER=memory for tests.",

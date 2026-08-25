@@ -31,11 +31,13 @@ let cachedClient: Redis | null = null
 
 function client(): Redis {
   if (cachedClient) return cachedClient
-  const url = process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+  // 兼容 Vercel Marketplace 注入的两种命名:
+  //   UPSTASH_REDIS_REST_URL/TOKEN (新) 与 KV_REST_API_URL/TOKEN (旧)
+  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
   if (!url || !token) {
     throw new Error(
-      "Upstash Redis is not configured. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN (install Upstash Redis from Vercel Marketplace).",
+      "Upstash Redis is not configured. Set UPSTASH_REDIS_REST_URL+UPSTASH_REDIS_REST_TOKEN (or KV_REST_API_URL+KV_REST_API_TOKEN as fallback).",
     )
   }
   cachedClient = new Redis({ url, token })
