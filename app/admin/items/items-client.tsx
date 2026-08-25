@@ -272,7 +272,7 @@ function EditDialog({ item, onClose, onSaved }: EditDialogProps) {
               value={shortCode}
               onChange={(e) => setShortCode(e.target.value)}
               className="font-mono text-sm"
-              pattern="[a-zA-Z0-9-]+"
+              pattern="[-a-zA-Z0-9]+"
               minLength={3}
               maxLength={20}
             />

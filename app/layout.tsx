@@ -31,7 +31,7 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" suppressHydrationWarning className={`${sourceSerif.variable} ${jetbrainsMono.variable}`}>
       <body className="font-serif antialiased">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           {children}
         </ThemeProvider>
       </body>

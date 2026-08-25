@@ -27,15 +27,25 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
         credentials: "include",
       })
+      // [DEBUG] 详细打印
+      const setCookieHeader = response.headers.get("set-cookie")
+      console.log("[auth/login]", {
+        status: response.status,
+        ok: response.ok,
+        setCookie: setCookieHeader,
+        allHeaders: Object.fromEntries(response.headers.entries()),
+      })
       if (response.ok) {
-        // 关键: 用 hard navigation, 确保新 cookie 被下一次请求带上。
-        // Next 16 RSC 的 router.push 可能复用 client cache, headers() 读不到新 cookie。
+        // [DEBUG] 检查 cookie 是否真的被浏览器保存
+        await new Promise((r) => setTimeout(r, 100))
+        console.log("[auth/login] cookies after login:", document.cookie)
         window.location.href = "/"
       } else {
         const data = await response.json().catch(() => ({}))
         setError(data.error || "登录失败")
       }
-    } catch {
+    } catch (err) {
+      console.error("[auth/login] fetch error:", err)
       setError("登录失败,请稍后重试")
     } finally {
       setIsLoading(false)

@@ -88,10 +88,19 @@ function errToResponse(err: unknown): { status: number; body: { error: string } 
   return { status: 500, body: { error: "Internal error" } }
 }
 
-async function requireAdmin(c: { req: { raw?: Request; header: (k: string) => string | undefined } }): Promise<{ ok: true } | { ok: false; res: Response }> {
+async function requireAdmin(
+  c: { req: { raw?: Request; path?: string; method?: string; header: (k: string) => string | undefined } },
+): Promise<{ ok: true } | { ok: false; res: Response }> {
   const cookie = getCookie(c)
   const session = await getSessionFromCookie(cookie)
   if (!session) {
+    // [DEBUG]
+    console.log("[api/requireAdmin FAIL]", {
+      path: c.req.path,
+      method: c.req.method,
+      hasCookie: Boolean(cookie),
+      cookiePreview: cookie ? cookie.slice(0, 120) : null,
+    })
     return {
       ok: false,
       res: new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -116,10 +125,19 @@ apiApp.post("/api/auth/login", async (c) => {
       return c.json({ error: "用户名和密码不能为空" }, 400)
     }
     const result = await login(body.username, body.password, await logCtx(c))
+    // [DEBUG]
+    console.log("[api/auth/login]", {
+      username: body.username,
+      loginOk: result.ok,
+      isSecure: isSecure(c),
+      xfp: c.req.header("x-forwarded-proto"),
+      url: c.req.url,
+    })
     if (!result.ok) {
       return c.json({ error: "用户名或密码错误" }, 401)
     }
     const setCookie = buildSetCookie(result.token, isSecure(c))
+    console.log("[api/auth/login] set-cookie:", setCookie)
     return new Response(JSON.stringify({ success: true, message: "登录成功", username: result.username }), {
       status: 200,
       headers: { "content-type": "application/json", "set-cookie": setCookie },
@@ -141,7 +159,14 @@ apiApp.post("/api/auth/logout", async (c) => {
 })
 
 apiApp.get("/api/auth/check", async (c) => {
-  const session = await getSessionFromCookie(getCookie(c))
+  const cookie = getCookie(c)
+  const session = await getSessionFromCookie(cookie)
+  // [DEBUG]
+  console.log("[api/auth/check]", {
+    hasCookie: Boolean(cookie),
+    cookiePreview: cookie ? cookie.slice(0, 80) : null,
+    session: session ? { username: session.username } : null,
+  })
   return c.json({ authenticated: Boolean(session), username: session?.username })
 })
 

@@ -84,7 +84,16 @@ export function LinkForm() {
         body: JSON.stringify(body),
         credentials: "include",
       })
-      const data = await response.json()
+      // [DEBUG] 复制 response 一次, 用来读 body 一次给日志, 一次给原流程
+      const cloned = response.clone()
+      const data = await response.json().catch(() => ({} as Record<string, unknown>))
+      console.log("[items/create]", {
+        status: response.status,
+        ok: response.ok,
+        body: await cloned.json().catch(() => null),
+        cookies: document.cookie,
+        sentAt: new Date().toISOString(),
+      })
       if (!response.ok) throw new Error(data.error || "创建失败")
       setResult({
         shortUrl: data.shortUrl,
@@ -163,7 +172,7 @@ export function LinkForm() {
                       onChange={(e) => setCustomSuffix(e.target.value)}
                       placeholder="my-link"
                       disabled={isLoading}
-                      pattern="[a-zA-Z0-9-]+"
+                      pattern="[-a-zA-Z0-9]+"
                       minLength={3}
                       maxLength={20}
                       className="font-mono text-sm"

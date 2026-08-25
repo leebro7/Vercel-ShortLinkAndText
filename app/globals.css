@@ -145,6 +145,15 @@
   }
   body {
     @apply bg-background text-foreground font-serif;
+    /* 主题切换: 颜色 / 边框 / 阴影平滑过渡 */
+    transition:
+      background-color 240ms ease,
+      color 240ms ease,
+      border-color 240ms ease;
+  }
+  /* 卡片与边框一起过渡 */
+  [class*="border"] {
+    transition: border-color 240ms ease;
   }
   code, pre, kbd, samp {
     font-family: var(--font-mono);
@@ -157,6 +166,12 @@
   /* 默认 button/input 字号略小一点,衬线显得温和 */
   input, textarea, select {
     @apply font-sans;
+  }
+  /* 尊重用户的"减少动效"偏好 */
+  @media (prefers-reduced-motion: reduce) {
+    body, [class*="border"] {
+      transition: none !important;
+    }
   }
 }
 
