@@ -37,16 +37,116 @@
 
 ### 在 Vercel 上部署(推荐)
 
-1. **Fork 这个仓库**
-2. **Vercel 仪表板** → Add New Project → 选 fork
-3. **Vercel Marketplace** → Storage → 装 **Upstash Redis** → 关联到这个项目  
-   会自动注入 `UPSTASH_REDIS_REST_URL` 和 `UPSTASH_REDIS_REST_TOKEN`
-4. **环境变量** 加两个:
-   - `ADMIN_USERNAME` — 默认 `admin`
-   - `ADMIN_PASSWORD` — 默认 `admin123`,**生产必改**
-5. **Deploy** — 第一次会建库;默认 6 位短码的碰撞处理已经写好
+1. **Fork 这个仓库**(右上角 Fork 按钮)
 
-部署完访问 `https://your-project.vercel.app`,输入 `admin / admin123` 登录。
+2. **在 Vercel 导入项目**
+   - 打开 [vercel.com/new](https://vercel.com/new)
+   - 选刚才 fork 的仓库 → **Import**
+   - 选一个 team / 命名项目
+
+3. **配置 Project Settings**(重要,默认不对)
+
+   展开 **"Build and Output Settings"** → 确认:
+   - **Framework Preset**: `Next.js`(自动检测)
+   - **Build Command**: `pnpm build`(默认即可,仓库里有 `pnpm` 锁)
+   - **Install Command**: `pnpm install`  
+     ⚠️ **必须改** — Vercel 默认是 `npm install`,会读错 lockfile
+   - **Output Directory**: `.next`(默认)
+   - **Node.js Version**: `22.x` (Settings → General → Node Version)  
+     pnpm@11 与 Node 20+ 兼容;建议锁 22
+
+4. **关联 Upstash Redis**(Vercel Marketplace)
+   - 还在 import 页面 → **Storage** 标签 → 选 **Upstash**
+   - 或项目创建后 → **Storage** 标签 → **Connect Store** → 选 Upstash → 选 region(选离你用户近的)
+   - 关联后会自动注入两个环境变量到三个环境(Production / Preview / Development):
+     - `UPSTASH_REDIS_REST_URL`
+     - `UPSTASH_REDIS_REST_TOKEN`
+   - ⚠️ **Free 计划限制**:10K 命令/天,256 MB 存储。够自托管短链
+
+5. **手动加项目自己的环境变量**  
+   Settings → Environment Variables:
+   - `ADMIN_USERNAME` — 默认 `admin`,生产建议改
+   - `ADMIN_PASSWORD` — **生产必改**(≥6 字符)
+   
+   三个环境都加(或只 Production + Preview)。
+   
+   完整变量清单(可选):
+   | 变量 | 必需 | 说明 |
+   |---|---|---|
+   | `UPSTASH_REDIS_REST_URL` | 是 | Upstash Marketplace 注入 |
+   | `UPSTASH_REDIS_REST_TOKEN` | 是 | 同上 |
+   | `ADMIN_USERNAME` | 否 | 默认 `admin` |
+   | `ADMIN_PASSWORD` | 否 | 默认 `admin123`,**生产必改** |
+   | `DATA_PROVIDER` | 否 | 显式选 driver;不设则自动按 env 推断 |
+
+6. **Deploy**  
+   点 Deploy,等 1-2 分钟。  
+   部署完访问 `https://your-project.vercel.app` → 用你的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录。
+
+7. **验证**
+   - 首页能创建短链接
+   - `/admin` 能登录
+   - 创建条目后,`/admin/items` 能看到
+   - `/api/health` 返回 `{"ok": true}`(确认 Upstash 已联通)
+
+8. **(可选)自定义域名**  
+   Settings → Domains → 添加 → 按提示配 DNS。  
+   注意:`/api/auth/check` 依赖 cookie,设了非主域 cookie 时要确保 SameSite=Lax 配置正确(已默认)
+
+#### 部署后必做
+
+- **改密码**:`/admin/settings` → 改默认 `admin123`  
+  改完会让所有会话失效,需要重新登录
+- **(推荐) GitHub Branch Protection** + 关闭 Preview Deployments  
+  Preview 部署会暴露你的 `/admin`,不关的话任何 PR 都能访问;或者在 Preview env 设**不同的** `ADMIN_PASSWORD` + 关掉 Upstash 关联(用 `DATA_PROVIDER=memory`)
+
+### 在自己的 VPS 上部署(Next.js 原生 + Upstash Cloud)
+
+不想用 Vercel?也行。
+
+```bash
+# 1. 注册 upstash.com,免费 10K 命令/天
+# 2. 创建 Redis database,拿 REST URL + Token
+# 3. clone & build:
+git clone https://github.com/leebro7/Vercel-ShortLinkAndText
+cd Vercel-ShortLinkAndText
+pnpm install
+pnpm build
+
+# 4. 跑:
+UPSTASH_REDIS_REST_URL=https://... UPSTASH_REDIS_REST_TOKEN=... \
+  ADMIN_USERNAME=admin ADMIN_PASSWORD=changeme \
+  pnpm start
+```
+
+进程管理用 PM2:
+
+```bash
+pm2 start pnpm --name short-link -- start
+pm2 save
+pm2 startup
+```
+
+反向代理用 nginx(把 `localhost:3000` 暴露到 `https://yourdomain.com`):
+
+```nginx
+server {
+  listen 443 ssl http2;
+  server_name yourdomain.com;
+  # ... cert & key ...
+
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
 
 ### 本地开发
 
@@ -70,6 +170,7 @@ DATA_PROVIDER=memory pnpm dev
 ```bash
 pnpm test         # 71 个测试
 pnpm typecheck    # tsc --noEmit
+pnpm build        # 生产构建(14 routes)
 ```
 
 ## 数据存储
