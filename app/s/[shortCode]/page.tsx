@@ -1,0 +1,282 @@
+"use client"
+
+import { use, useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Card, CardContent } from "@/components/ui/card"
+import { Lock, Loader2, AlertCircle, FileText, Flame, Sparkles, Copy, Check } from "lucide-react"
+import Link from "next/link"
+import { ThemeToggle } from "@/components/theme-toggle"
+import { Markdown } from "@/components/markdown"
+
+interface Meta {
+  type: "link" | "text"
+  shortCode: string
+  hasPassword: boolean
+  burnAfterReading: boolean
+  burned?: boolean
+  contentFormat: "plain" | "markdown"
+  textPreview: string
+  expiresAt?: number
+  createdAt: number
+}
+
+interface ViewPayload {
+  item: {
+    type: "text"
+    content: string
+    textPreview: string
+    viewCount: number
+    contentFormat: "plain" | "markdown"
+    createdAt: number
+    burned?: boolean
+  }
+  burned: boolean
+}
+
+export default function TextSharePage({
+  params,
+}: {
+  params: Promise<{ shortCode: string }>
+}) {
+  const { shortCode } = use(params)
+  const router = useRouter()
+  const [meta, setMeta] = useState<Meta | null>(null)
+  const [view, setView] = useState<ViewPayload | null>(null)
+  const [password, setPassword] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
+  const [notFound, setNotFound] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`/api/items/${shortCode}/meta`)
+        if (res.status === 404) {
+          setNotFound(true)
+          return
+        }
+        const data = (await res.json()) as Meta
+        setMeta(data)
+        // 如果没密码,直接 view
+        if (!data.hasPassword) {
+          await loadView()
+        }
+      } catch {
+        setError("加载失败")
+      }
+    })()
+  }, [shortCode])
+
+  async function loadView() {
+    const res = await fetch(`/api/items/${shortCode}/view`, {
+      credentials: "include",
+    })
+    if (res.status === 401) {
+      // 需要密码
+      return
+    }
+    if (!res.ok) {
+      setError("加载失败")
+      return
+    }
+    const data = (await res.json()) as ViewPayload
+    setView(data)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!password) {
+      setError("请输入密码")
+      return
+    }
+    setSubmitting(true)
+    setError("")
+    try {
+      const res = await fetch(`/api/items/${shortCode}/unlock`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password }),
+        credentials: "include",
+      })
+      if (res.status === 401) {
+        setError("密码不对")
+        return
+      }
+      if (!res.ok) {
+        setError("验证失败")
+        return
+      }
+      await loadView()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleCopy() {
+    if (!view) return
+    await navigator.clipboard.writeText(view.item.content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  if (notFound) {
+    return (
+      <main className="min-h-[100dvh] flex items-center justify-center px-6">
+        <div className="max-w-md w-full text-center">
+          <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
+            not found
+          </p>
+          <h1 className="mt-6 text-3xl font-semibold">没找到这份分享</h1>
+          <Button asChild className="mt-10">
+            <Link href="/">回到首页</Link>
+          </Button>
+        </div>
+      </main>
+    )
+  }
+
+  if (view) {
+    return (
+      <main className="min-h-[100dvh] flex flex-col">
+        <header className="px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground">
+            ~/short-link
+          </Link>
+          <ThemeToggle />
+        </header>
+        <article className="flex-1 px-6 py-8 max-w-2xl mx-auto w-full">
+          <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
+            shared · {new Date(view.item.createdAt).toLocaleDateString("zh-CN")}
+          </p>
+          <div className="mt-2 flex items-center gap-2 font-mono text-xs text-muted-foreground">
+            {meta?.burnAfterReading && (
+              <span className="flex items-center gap-1">
+                <Flame className="h-3 w-3" /> 阅后即焚
+              </span>
+            )}
+            {meta?.contentFormat === "markdown" && (
+              <span className="flex items-center gap-1">
+                <Sparkles className="h-3 w-3" /> MD
+              </span>
+            )}
+            <span>已查看 {view.item.viewCount} 次</span>
+          </div>
+          <Card className="mt-6">
+            <CardContent className="pt-6">
+              {view.burned ? (
+                <p className="text-muted-foreground italic">
+                  这条分享已被阅后即焚,内容已销毁。
+                </p>
+              ) : view.item.contentFormat === "markdown" ? (
+                <Markdown>{view.item.content}</Markdown>
+              ) : (
+                <div className="whitespace-pre-wrap break-words font-serif text-base leading-relaxed">
+                  {view.item.content}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          <div className="mt-4 flex items-center justify-end">
+            <Button onClick={handleCopy} variant="ghost" size="sm">
+              {copied ? (
+                <>
+                  <Check className="mr-1.5 h-3.5 w-3.5" /> 已复制
+                </>
+              ) : (
+                <>
+                  <Copy className="mr-1.5 h-3.5 w-3.5" /> 复制
+                </>
+              )}
+            </Button>
+          </div>
+        </article>
+      </main>
+    )
+  }
+
+  // 密码表单
+  return (
+    <div className="min-h-[100dvh] flex flex-col">
+      <header className="px-6 py-4 flex items-center justify-between">
+        <Link href="/" className="font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground">
+          ~/short-link
+        </Link>
+        <ThemeToggle />
+      </header>
+
+      <main className="flex-1 flex items-center justify-center px-6">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-10">
+            <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
+              shared note
+            </p>
+            <h1 className="mt-4 text-2xl font-semibold">需要密码</h1>
+            <p className="mt-2 text-sm text-muted-foreground">这份分享被锁了。</p>
+          </div>
+
+          {meta && (
+            <div className="mb-6 flex items-start gap-2 rounded-md border bg-muted/30 p-3 text-sm">
+              <FileText className="h-4 w-4 text-muted-foreground mt-0.5" />
+              <div className="min-w-0">
+                <p className="line-clamp-2 text-muted-foreground">{meta.textPreview}</p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground flex items-center gap-2">
+                  <span>创建于 {new Date(meta.createdAt).toLocaleDateString("zh-CN")}</span>
+                  {meta.burnAfterReading && (
+                    <span className="flex items-center gap-1">
+                      <Flame className="h-3 w-3" /> 阅后即焚
+                    </span>
+                  )}
+                  {meta.contentFormat === "markdown" && (
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> MD
+                    </span>
+                  )}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="password" className="text-xs text-muted-foreground">
+                密码
+              </Label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pl-9 font-mono"
+                  autoFocus
+                  disabled={submitting}
+                />
+              </div>
+            </div>
+            {error && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                <span>{error}</span>
+              </div>
+            )}
+            <Button type="submit" className="w-full" disabled={submitting || !password}>
+              {submitting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  验证中…
+                </>
+              ) : (
+                "查看"
+              )}
+            </Button>
+          </form>
+        </div>
+      </main>
+    </div>
+  )
+}
