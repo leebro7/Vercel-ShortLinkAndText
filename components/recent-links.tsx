@@ -1,12 +1,10 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Trash2, ExternalLink, BarChart3, Lock } from 'lucide-react'
+import { Trash2, ExternalLink, Lock, ArrowUpRight, Pencil } from "lucide-react"
 import Link from "next/link"
-import type { Item } from "@/lib/types"
+import type { Item } from "@/lib/db"
 import { desensitizeUrl, desensitizeText } from "@/lib/utils"
 
 export function RecentLinks() {
@@ -20,170 +18,125 @@ export function RecentLinks() {
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  const checkAuth = async () => {
-    try {
-      const response = await fetch("/api/auth/check")
-      const data = await response.json()
-      setIsAuthenticated(data.authenticated)
-    } catch (error) {
-      console.error("[v0] Error checking auth:", error)
-      setIsAuthenticated(false)
-    }
-  }
-
-  const fetchItems = async () => {
-    try {
-      const response = await fetch("/api/items")
-      const data = await response.json()
-      setItems(data.items || [])
-      setStats(data.stats || stats)
-    } catch (error) {
-      console.error("[v0] Error fetching items:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   useEffect(() => {
-    checkAuth().then(() => {
-      fetchItems()
-    })
+    void (async () => {
+      try {
+        const authRes = await fetch("/api/auth/check")
+        const auth = (await authRes.json()) as { authenticated: boolean }
+        setIsAuthenticated(auth.authenticated)
+        if (!auth.authenticated) {
+          setIsLoading(false)
+          return
+        }
+        const res = await fetch("/api/items")
+        const data = (await res.json()) as { items: Item[]; stats: typeof stats }
+        setItems(data.items || [])
+        if (data.stats) setStats(data.stats)
+      } catch (error) {
+        console.error("Error loading items:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    })()
 
-    const handleLinkCreated = () => {
-      fetchItems()
+    const onCreated = () => {
+      void (async () => {
+        const res = await fetch("/api/items")
+        if (!res.ok) return
+        const data = (await res.json()) as { items: Item[]; stats: typeof stats }
+        setItems(data.items || [])
+        if (data.stats) setStats(data.stats)
+      })()
     }
-    window.addEventListener("linkCreated", handleLinkCreated)
-
-    return () => {
-      window.removeEventListener("linkCreated", handleLinkCreated)
-    }
+    window.addEventListener("linkCreated", onCreated)
+    return () => window.removeEventListener("linkCreated", onCreated)
   }, [])
 
-  const handleDelete = async (shortCode: string) => {
-    if (!confirm("确定要删除吗？")) return
-
-    try {
-      const response = await fetch(`/api/items?shortCode=${shortCode}`, {
-        method: "DELETE",
-      })
-
-      if (response.ok) {
-        fetchItems()
-      }
-    } catch (error) {
-      console.error("[v0] Error deleting item:", error)
+  async function handleDelete(shortCode: string) {
+    if (!confirm("确定要删除吗?")) return
+    const res = await fetch(`/api/items?shortCode=${shortCode}`, { method: "DELETE" })
+    if (res.ok) {
+      setItems((prev) => prev.filter((i) => i.shortCode !== shortCode))
+      setStats((s) => ({ ...s, totalItems: s.totalItems - 1 }))
     }
   }
 
-  if (!isAuthenticated) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center">
-          <Lock className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">需要管理员权限</h3>
-          <p className="text-muted-foreground mb-4">请登录以查看和管理</p>
-          <Link href="/login">
-            <Button>前往登录</Button>
-          </Link>
-        </CardContent>
-      </Card>
-    )
-  }
-
+  if (!isAuthenticated) return null
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent className="py-12 text-center text-muted-foreground">加载中...</CardContent>
-      </Card>
-    )
+    return <p className="font-mono text-xs text-muted-foreground text-center py-8">加载中…</p>
   }
 
   return (
-    <div className="space-y-6">
-      {/* Statistics */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>总项目数</CardDescription>
-            <CardTitle className="text-3xl">{stats.totalItems}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>总点击数</CardDescription>
-            <CardTitle className="text-3xl">{stats.totalClicks}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>活跃项目</CardDescription>
-            <CardTitle className="text-3xl text-green-600">{stats.activeItems}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
-            <CardDescription>已过期</CardDescription>
-            <CardTitle className="text-3xl text-muted-foreground">{stats.expiredItems}</CardTitle>
-          </CardHeader>
-        </Card>
+    <div className="space-y-8">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 border-y py-6">
+        {[
+          { label: "总项目", v: stats.totalItems },
+          { label: "总点击", v: stats.totalClicks },
+          { label: "活跃", v: stats.activeItems },
+          { label: "已过期", v: stats.expiredItems },
+        ].map((s) => (
+          <div key={s.label}>
+            <p className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
+              {s.label}
+            </p>
+            <p className="mt-2 text-2xl font-semibold tabular-nums">{s.v}</p>
+          </div>
+        ))}
       </div>
 
-      {/* Items List */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <BarChart3 className="h-5 w-5" />
-            最近创建的项目
-          </CardTitle>
-          <CardDescription>查看和管理你的短链接和文本分享</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {items.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground">还没有创建任何项目</div>
-          ) : (
-            <div className="space-y-4">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex flex-col gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50 md:flex-row md:items-center md:justify-between"
-                >
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <code className="rounded bg-muted px-2 py-1 text-sm font-semibold">/{item.shortCode}</code>
-                      <Badge variant={item.type === "link" ? "default" : "secondary"}>
-                        {item.type === "link" ? "链接" : "文本"}
-                      </Badge>
-                      {item.customSuffix && <Badge variant="outline">自定义</Badge>}
-                    </div>
-                    {item.type === "link" ? (
-                      <div title={item.originalUrl} className="text-sm text-muted-foreground line-clamp-1">
-                        {desensitizeUrl(item.originalUrl)}
-                      </div>
-                    ) : (
-                      <div title={item.textPreview} className="text-sm text-muted-foreground line-clamp-2">
-                        {desensitizeText(item.textPreview || '')}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <span>点击: {item.clickCount}</span>
-                      <span>创建: {new Date(item.createdAt).toLocaleDateString("zh-CN")}</span>
-                      {item.expiresAt && <span>过期: {new Date(item.expiresAt).toLocaleDateString("zh-CN")}</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => window.open(`/${item.shortCode}`, "_blank")}>
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleDelete(item.shortCode)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+      {items.length === 0 ? (
+        <p className="font-mono text-sm text-muted-foreground text-center py-8">
+          还没有任何项目。上面输入点东西试试。
+        </p>
+      ) : (
+        <ul className="divide-y">
+          {items.map((item) => (
+            <li key={item.id} className="py-4 flex items-start gap-4 group">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="font-mono text-sm">/{item.shortCode}</code>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {item.type === "link" ? "link" : "text"}
+                  </span>
+                  {item.type === "link" && item.customSuffix && (
+                    <span className="font-mono text-xs text-muted-foreground">· custom</span>
+                  )}
+                  {item.type === "text" && item.passwordHash && (
+                    <Lock className="h-3 w-3 text-muted-foreground" />
+                  )}
+                  {item.type === "text" && item.burnAfterReading && (
+                    <span className="font-mono text-xs text-muted-foreground">· burn</span>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <p
+                  title={item.type === "link" ? item.originalUrl : item.textPreview}
+                  className="mt-1 text-sm text-muted-foreground line-clamp-1"
+                >
+                  {item.type === "link"
+                    ? desensitizeUrl(item.originalUrl)
+                    : desensitizeText(item.textPreview || "")}
+                </p>
+                <p className="mt-1 font-mono text-xs text-muted-foreground">
+                  {item.clickCount} hits · {new Date(item.createdAt).toLocaleDateString("zh-CN")}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button asChild variant="ghost" size="icon" aria-label="打开">
+                  <Link href={`/${item.shortCode}`} target="_blank">
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Link>
+                </Button>
+                <Button variant="ghost" size="icon" aria-label="修改" disabled title="阶段 2 提供">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" aria-label="删除" onClick={() => handleDelete(item.shortCode)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

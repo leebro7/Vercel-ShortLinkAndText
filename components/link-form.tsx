@@ -6,71 +6,97 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Copy, Check, Link2, FileText, Loader2 } from "lucide-react"
+import { Copy, Check, Loader2, ChevronDown, Lock, Flame, QrCode } from "lucide-react"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+
+type ItemType = "link" | "text"
+
+function detectType(input: string): ItemType {
+  const trimmed = input.trim()
+  if (!trimmed) return "link"
+  // 多行,或者明显不是 URL -> 文本
+  if (trimmed.includes("\n") || /\s{2,}/.test(trimmed)) return "text"
+  // URL? 试着 new URL
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol === "http:" || u.protocol === "https:") return "link"
+  } catch {
+    /* not a url */
+  }
+  return "text"
+}
+
+const EXPIRES: Array<{ v: string; label: string }> = [
+  { v: "", label: "永不过期" },
+  { v: "1", label: "1 小时" },
+  { v: "24", label: "24 小时" },
+  { v: "168", label: "7 天" },
+  { v: "720", label: "30 天" },
+]
 
 export function LinkForm() {
-  const [itemType, setItemType] = useState<"link" | "text">("link")
-  const [url, setUrl] = useState("")
-  const [textContent, setTextContent] = useState("")
+  const [input, setInput] = useState("")
   const [customSuffix, setCustomSuffix] = useState("")
-  const [expiresInHours, setExpiresInHours] = useState<string>("")
+  const [expiresInHours, setExpiresInHours] = useState("")
+  const [password, setPassword] = useState("")
+  const [burnAfterReading, setBurnAfterReading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [generatedLink, setGeneratedLink] = useState<{
+  const [result, setResult] = useState<{
     shortUrl: string
     shortCode: string
     expiresAt?: number
-    type: "link" | "text"
+    type: ItemType
+    hasPassword: boolean
   } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [showQr, setShowQr] = useState(false)
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const detectedType: ItemType = detectType(input)
+  const isText = detectedType === "text"
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!input.trim()) {
+      setError(isText ? "请输入要分享的文本" : "请输入链接")
+      return
+    }
     setError("")
-    setGeneratedLink(null)
+    setResult(null)
     setIsLoading(true)
-
     try {
-      const content = itemType === "link" ? url : textContent
-      if (!content) {
-        throw new Error(itemType === "link" ? "请输入链接" : "请输入文本内容")
+      const body: Record<string, unknown> = {
+        type: detectedType,
+        content: input.trim(),
       }
+      if (customSuffix) body.customSuffix = customSuffix
+      if (expiresInHours) body.expiresInHours = Number(expiresInHours)
+      if (isText && password) body.password = password
+      if (isText && burnAfterReading) body.burnAfterReading = true
 
       const response = await fetch("/api/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: itemType,
-          content,
-          customSuffix: customSuffix || undefined,
-          expiresInHours: expiresInHours ? Number.parseInt(expiresInHours) : undefined,
-        }),
+        body: JSON.stringify(body),
       })
-
       const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "创建失败")
-      }
-
-      setGeneratedLink({
+      if (!response.ok) throw new Error(data.error || "创建失败")
+      setResult({
         shortUrl: data.shortUrl,
         shortCode: data.shortCode,
         expiresAt: data.expiresAt,
-        type: itemType,
+        type: detectedType,
+        hasPassword: Boolean(data.hasPassword),
       })
-
-      // Reset form
-      setUrl("")
-      setTextContent("")
+      setInput("")
       setCustomSuffix("")
       setExpiresInHours("")
-
-      // Trigger refresh
+      setPassword("")
+      setBurnAfterReading(false)
       window.dispatchEvent(new Event("linkCreated"))
     } catch (err) {
       setError(err instanceof Error ? err.message : "创建失败")
@@ -79,173 +105,181 @@ export function LinkForm() {
     }
   }
 
-  const handleCopy = async () => {
-    if (generatedLink) {
-      await navigator.clipboard.writeText(generatedLink.shortUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
+  async function handleCopy() {
+    if (!result) return
+    await navigator.clipboard.writeText(result.shortUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
-  const expirationOptions = [
-    { value: "1", label: "1 小时" },
-    { value: "2", label: "2 小时" },
-    { value: "6", label: "6 小时" },
-    { value: "12", label: "12 小时" },
-    { value: "24", label: "24 小时" },
-    { value: "48", label: "2 天" },
-    { value: "168", label: "7 天" },
-    { value: "720", label: "30 天" },
-  ]
+  function handleQrToggle() {
+    setShowQr((s) => !s)
+  }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Link2 className="h-5 w-5" />
-            创建短链接或分享文本
-          </CardTitle>
-          <CardDescription>选择类型，输入内容并配置设置</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label>类型选择</Label>
-              <div className="flex gap-2">
+    <div className="space-y-4">
+      <form onSubmit={handleSubmit}>
+        <Card>
+          <CardContent className="pt-6 space-y-4">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={isText ? "把要分享的文本贴在这里…" : "https://example.com/very/long/url"}
+              rows={isText ? 4 : 2}
+              disabled={isLoading}
+              className="font-mono text-sm"
+              autoFocus
+            />
+            <p className="font-mono text-xs text-muted-foreground -mt-2">
+              {isText
+                ? "检测为:文本分享"
+                : input.trim()
+                ? "检测为:短链接"
+                : "自动识别:链接 / 文本"}
+            </p>
+
+            <Collapsible>
+              <CollapsibleTrigger asChild>
                 <Button
                   type="button"
-                  variant={itemType === "link" ? "default" : "outline"}
-                  onClick={() => {
-                    setItemType("link")
-                    setError("")
-                  }}
-                  disabled={isLoading}
-                  className="flex-1"
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground -ml-2"
                 >
-                  <Link2 className="mr-2 h-4 w-4" />
-                  链接
+                  <ChevronDown className="mr-1 h-3 w-3" />
+                  高级选项
                 </Button>
-                <Button
-                  type="button"
-                  variant={itemType === "text" ? "default" : "outline"}
-                  onClick={() => {
-                    setItemType("text")
-                    setError("")
-                  }}
-                  disabled={isLoading}
-                  className="flex-1"
-                >
-                  <FileText className="mr-2 h-4 w-4" />
-                  文本
-                </Button>
-              </div>
-            </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 pt-2">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="suffix" className="text-xs text-muted-foreground">
+                      自定义后缀
+                    </Label>
+                    <Input
+                      id="suffix"
+                      value={customSuffix}
+                      onChange={(e) => setCustomSuffix(e.target.value)}
+                      placeholder="my-link"
+                      disabled={isLoading}
+                      pattern="[a-zA-Z0-9-]+"
+                      minLength={3}
+                      maxLength={20}
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="expires" className="text-xs text-muted-foreground">
+                      过期时间
+                    </Label>
+                    <Select value={expiresInHours} onValueChange={setExpiresInHours} disabled={isLoading}>
+                      <SelectTrigger id="expires" className="font-mono text-sm">
+                        <SelectValue placeholder="永不过期" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {EXPIRES.map((o) => (
+                          <SelectItem key={o.v} value={o.v}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-            {/* Link Input */}
-            {itemType === "link" && (
-              <div className="space-y-2">
-                <Label htmlFor="url">原始链接 *</Label>
-                <Input
-                  id="url"
-                  type="url"
-                  placeholder="https://example.com/very/long/url"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  disabled={isLoading}
-                />
-              </div>
-            )}
+                {isText && (
+                  <div className="space-y-4 rounded-md border bg-muted/30 p-4">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="password" className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Lock className="h-3 w-3" /> 访问密码
+                      </Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="不填则无密码"
+                        disabled={isLoading}
+                        minLength={4}
+                        className="font-mono text-sm"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={burnAfterReading}
+                        onChange={(e) => setBurnAfterReading(e.target.checked)}
+                        disabled={isLoading}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <Flame className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span>阅后即焚(首次访问后立即清空)</span>
+                    </label>
+                  </div>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
 
-            {/* Text Input */}
-            {itemType === "text" && (
-              <div className="space-y-2">
-                <Label htmlFor="text">文本内容 *</Label>
-                <Textarea
-                  id="text"
-                  placeholder="输入要分享的文本内容..."
-                  value={textContent}
-                  onChange={(e) => setTextContent(e.target.value)}
-                  disabled={isLoading}
-                  rows={6}
-                />
-                <p className="text-xs text-muted-foreground">{textContent.length} 字符</p>
-              </div>
-            )}
-
-            {/* Custom Suffix */}
-            <div className="space-y-2">
-              <Label htmlFor="suffix">自定义后缀（可选）</Label>
-              <Input
-                id="suffix"
-                type="text"
-                placeholder="my-custom-link"
-                value={customSuffix}
-                onChange={(e) => setCustomSuffix(e.target.value)}
-                disabled={isLoading}
-                pattern="[a-zA-Z0-9-]+"
-                minLength={3}
-                maxLength={20}
-              />
-              <p className="text-xs text-muted-foreground">3-20个字符，仅支持字母、数字和连字符</p>
-            </div>
-
-            {/* Expiration Time */}
-            <div className="space-y-2">
-              <Label htmlFor="expires">过期时间（可选）</Label>
-              <Select value={expiresInHours} onValueChange={setExpiresInHours} disabled={isLoading}>
-                <SelectTrigger id="expires">
-                  <SelectValue placeholder="永不过期" />
-                </SelectTrigger>
-                <SelectContent>
-                  {expirationOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Error Message */}
             {error && (
               <Alert variant="destructive">
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
-            {/* Submit Button */}
-            <Button type="submit" className="w-full" disabled={isLoading}>
+            <Button type="submit" className="w-full" disabled={isLoading || !input.trim()}>
               {isLoading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  创建中...
+                  生成中…
                 </>
               ) : (
-                `创建${itemType === "link" ? "短链接" : "分享"}`
+                "生成"
               )}
             </Button>
-          </form>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </form>
 
-      {/* Generated Link Display */}
-      {generatedLink && (
-        <Card className="border-primary/50 bg-primary/5">
-          <CardHeader>
-            <CardTitle className="text-lg">{generatedLink.type === "link" ? "短链接" : "文本分享"}创建成功！</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
+      {result && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="pt-6 space-y-3">
+            <p className="text-sm text-muted-foreground">
+              {result.type === "link" ? "短链接已就绪" : "分享已就绪"}
+              {result.hasPassword ? " · 受密码保护" : ""}
+              {result.expiresAt
+                ? ` · ${new Date(result.expiresAt).toLocaleString("zh-CN")} 过期`
+                : ""}
+            </p>
             <div className="flex items-center gap-2">
-              <Input value={generatedLink.shortUrl} readOnly className="font-mono" />
-              <Button onClick={handleCopy} variant="outline" size="icon">
+              <Input
+                value={result.shortUrl}
+                readOnly
+                className="font-mono text-sm"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <Button onClick={handleCopy} variant="outline" size="icon" aria-label="复制">
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </Button>
+              <Button onClick={handleQrToggle} variant="outline" size="icon" aria-label="QR 码">
+                <QrCode className="h-4 w-4" />
+              </Button>
             </div>
-            {generatedLink.expiresAt && (
-              <p className="text-sm text-muted-foreground">
-                过期时间：{new Date(generatedLink.expiresAt).toLocaleString("zh-CN")}
-              </p>
+            <p className="font-mono text-xs text-muted-foreground">
+              /{result.shortCode}
+            </p>
+            {showQr && (
+              <div className="pt-2 flex justify-center">
+                <div className="rounded-md bg-background p-3 inline-block">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/qr?url=${encodeURIComponent(result.shortUrl)}&format=png`}
+                    alt="QR"
+                    width={192}
+                    height={192}
+                    className="block"
+                  />
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>

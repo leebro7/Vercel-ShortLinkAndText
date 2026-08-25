@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation"
-import { getItemByShortCode, incrementClickCount } from "@/lib/db"
-import { Link2, AlertCircle, FileText } from "lucide-react"
+import { viewItem } from "@/lib/db"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { AlertCircle } from "lucide-react"
 import Link from "next/link"
+import { headers } from "next/headers"
 
 interface PageProps {
   params: Promise<{
@@ -11,63 +12,85 @@ interface PageProps {
   }>
 }
 
-export default async function RedirectPage({ params }: PageProps) {
+export default async function ShortCodePage({ params }: PageProps) {
   const { shortCode } = await params
 
-  const item = await getItemByShortCode(shortCode)
+  const h = await headers()
+  const ip =
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    h.get("x-real-ip") ||
+    undefined
+  const ua = h.get("user-agent") || undefined
 
-  // If item not found or expired, show 404 page
-  if (!item) {
+  const result = await viewItem(shortCode, { ip, userAgent: ua })
+
+  if (!result) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-muted/20 p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-              <AlertCircle className="h-8 w-8 text-destructive" />
-            </div>
-            <CardTitle className="text-2xl">不存在或已过期</CardTitle>
-            <CardDescription>该短链接或分享不存在或已过期</CardDescription>
-          </CardHeader>
-          <CardContent className="text-center">
-            <Link href="/">
-              <Button className="w-full">
-                <Link2 className="mr-2 h-4 w-4" />
-                创建新的短链接
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      </div>
+      <main className="min-h-[100dvh] flex items-center justify-center px-6">
+        <div className="max-w-md w-full text-center">
+          <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
+            not found
+          </p>
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight">
+            这页没找到。
+          </h1>
+          <p className="mt-4 text-muted-foreground leading-relaxed">
+            短链接或分享不存在,或已经过期。
+          </p>
+          <div className="mt-10">
+            <Button asChild>
+              <Link href="/">回到首页</Link>
+            </Button>
+          </div>
+        </div>
+      </main>
     )
   }
 
-  // Increment click count (fire and forget)
-  incrementClickCount(shortCode).catch((error) => {
-    console.error("[v0] Error incrementing click count:", error)
-  })
+  const item = result.item
+  if (item.type === "link") {
+    redirect(item.originalUrl)
+  }
 
-  if (item.type === "text") {
+  // 文本类型
+  if (item.passwordHash) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-muted/20 p-4">
-        <Card className="w-full max-w-2xl">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              <CardTitle>文本分享</CardTitle>
-            </div>
-            <CardDescription>创建于 {new Date(item.createdAt).toLocaleString("zh-CN")}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="rounded-lg bg-muted p-4 min-h-32 max-h-96 overflow-auto whitespace-pre-wrap break-words">
+      <main className="min-h-[100dvh] flex items-center justify-center px-6">
+        <Card className="max-w-md w-full">
+          <CardContent className="pt-6 space-y-3 text-center">
+            <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto" />
+            <h1 className="text-xl font-semibold">这份分享被锁了</h1>
+            <p className="text-muted-foreground text-sm">
+              请向分享人索取密码。<br />
+              密码输入页将在下一阶段提供。
+            </p>
+            <Button asChild variant="outline" className="mt-4">
+              <Link href="/">返回首页</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </main>
+    )
+  }
+
+  return (
+    <main className="min-h-[100dvh] flex items-center justify-center px-6 py-12">
+      <article className="max-w-2xl w-full">
+        <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
+          shared · {new Date(item.createdAt).toLocaleDateString("zh-CN")}
+        </p>
+        <h1 className="mt-4 text-2xl font-semibold">文本分享</h1>
+        <Card className="mt-6">
+          <CardContent className="pt-6">
+            <div className="whitespace-pre-wrap break-words font-serif text-base leading-relaxed">
               {item.content}
             </div>
-            <div className="mt-4 text-sm text-muted-foreground">已查看 {item.clickCount} 次</div>
           </CardContent>
         </Card>
-      </div>
-    )
-  }
-
-  // Redirect to original URL for links
-  redirect(item.originalUrl!)
+        <p className="mt-4 font-mono text-xs text-muted-foreground text-right">
+          已查看 {item.viewCount} 次
+        </p>
+      </article>
+    </main>
+  )
 }
