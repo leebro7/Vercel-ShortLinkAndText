@@ -31,7 +31,7 @@ function detectType(input: string): ItemType {
 }
 
 const EXPIRES: Array<{ v: string; label: string }> = [
-  { v: "", label: "永不过期" },
+  { v: "0", label: "永不过期" },
   { v: "1", label: "1 小时" },
   { v: "24", label: "24 小时" },
   { v: "168", label: "7 天" },
@@ -41,7 +41,7 @@ const EXPIRES: Array<{ v: string; label: string }> = [
 export function LinkForm() {
   const [input, setInput] = useState("")
   const [customSuffix, setCustomSuffix] = useState("")
-  const [expiresInHours, setExpiresInHours] = useState("")
+  const [expiresInHours, setExpiresInHours] = useState("0")
   const [password, setPassword] = useState("")
   const [burnAfterReading, setBurnAfterReading] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
