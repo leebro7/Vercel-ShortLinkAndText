@@ -12,6 +12,11 @@
  * - 第一次访问任意鉴权接口:若 KV 没 "admin:password_hash",把 env 密码哈希写入。
  *   此后 env 密码不再生效,改密码走 /api/auth/password。
  *   这是简单的"重置一次后即固化"模型。
+ *
+ * 三种身份:
+ * - admin: 登录用户, 全部权限
+ * - guest: 临时访客 (走 /u 入口), 只能创建分享 + 查看
+ * - 陌生人: 无 cookie, 只能查看公开分享, 创建分享被限流
  */
 
 import { getDataProvider } from "../db/provider"
@@ -19,14 +24,31 @@ import { hashPassword, verifyPassword } from "../password"
 import {
   SESSION_COOKIE,
   SESSION_TTL_SECONDS,
+  GUEST_COOKIE,
+  GUEST_TTL_SECONDS,
   createSession,
+  createGuestSession,
   destroyAllSessions,
   destroySession,
+  destroyGuestSession,
   readSession,
+  readGuestSession,
   type SessionInfo,
 } from "./session"
 
-export { SESSION_COOKIE, SESSION_TTL_SECONDS, type SessionInfo }
+export {
+  SESSION_COOKIE,
+  SESSION_TTL_SECONDS,
+  GUEST_COOKIE,
+  GUEST_TTL_SECONDS,
+  createSession,
+  createGuestSession,
+  destroySession,
+  destroyGuestSession,
+  readSession,
+  readGuestSession,
+  type SessionInfo,
+}
 
 const ADMIN_USERNAME_KEY = "admin:username"
 const ADMIN_PASSWORD_HASH_KEY = "admin:password_hash"
@@ -89,7 +111,7 @@ export async function changeAdminPassword(
 }
 
 /**
- * 从 cookie 头里解出 token。
+ * 从 cookie 头里解出 admin token。
  * 期望格式: "admin_session=<token>; ..."
  */
 export function readSessionCookie(cookieHeader: string | null | undefined): string | null {
@@ -98,6 +120,17 @@ export function readSessionCookie(cookieHeader: string | null | undefined): stri
   for (const p of parts) {
     const [k, v] = p.split("=")
     if (k === SESSION_COOKIE && v) return decodeURIComponent(v)
+  }
+  return null
+}
+
+/** 从 cookie 头里解出 guest token。 */
+export function readGuestCookie(cookieHeader: string | null | undefined): string | null {
+  if (!cookieHeader) return null
+  const parts = cookieHeader.split(/;\s*/)
+  for (const p of parts) {
+    const [k, v] = p.split("=")
+    if (k === GUEST_COOKIE && v) return decodeURIComponent(v)
   }
   return null
 }
@@ -127,6 +160,31 @@ export function buildClearCookie(secure: boolean): string {
   return attrs.join("; ")
 }
 
+/** 设置 guest cookie。 */
+export function buildSetGuestCookie(token: string, secure: boolean): string {
+  const attrs = [
+    `${GUEST_COOKIE}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${GUEST_TTL_SECONDS}`,
+  ]
+  if (secure) attrs.push("Secure")
+  return attrs.join("; ")
+}
+
+export function buildClearGuestCookie(secure: boolean): string {
+  const attrs = [
+    `${GUEST_COOKIE}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=0",
+  ]
+  if (secure) attrs.push("Secure")
+  return attrs.join("; ")
+}
+
 /** 入口:鉴权 + 写日志由调用方负责。 */
 export async function login(
   username: string,
@@ -144,6 +202,24 @@ export async function logout(token: string | null): Promise<void> {
 }
 
 export async function getSessionFromCookie(cookieHeader: string | null): Promise<SessionInfo | null> {
-  const token = readSessionCookie(cookieHeader)
-  return readSession(token)
+  // admin 优先: 如果同一个浏览器同时有 admin + guest cookie (admin 登入后
+  // 仍残留 guest), 以 admin 为准。
+  const adminToken = readSessionCookie(cookieHeader)
+  const admin = await readSession(adminToken)
+  if (admin) return admin
+  const guestToken = readGuestCookie(cookieHeader)
+  return readGuestSession(guestToken)
+}
+
+/** 是否有任何会话 (admin 或 guest)。 */
+export function isAnySession(info: SessionInfo | null): info is SessionInfo {
+  return info !== null
+}
+
+export function isAdminSession(info: SessionInfo | null): boolean {
+  return info?.kind === "admin"
+}
+
+export function isGuestSession(info: SessionInfo | null): boolean {
+  return info?.kind === "guest"
 }

@@ -9,6 +9,11 @@
  *
  * 优势:可被服务端撤销(改密码会让所有会话失效);不像 JWT 那样不可收回。
  * 代价:每次鉴权多一次 KV 读,管理员场景可接受。
+ *
+ * 临时访客会话 (guest):
+ * - 访问 /u 入口时颁发,独立 cookie 名 + 独立 KV 路径。
+ * - 通过 cookie 标记 kind="guest", 与 admin 会话互不污染。
+ * - 只能创建分享, 不能进 admin 后台。
  */
 
 import { getDataProvider } from "../db/provider"
@@ -20,9 +25,14 @@ import { getDataProvider } from "../db/provider"
  * 同时对中间人下毒更安全 (因为 prefix 校验强制 Secure+Path)。
  */
 export const SESSION_COOKIE = "__Host-admin_session"
+export const GUEST_COOKIE = "__Host-guest_session"
 export const SESSION_TTL_SECONDS = 24 * 60 * 60
+export const GUEST_TTL_SECONDS = 24 * 60 * 60
+
+export type SessionKind = "admin" | "guest"
 
 export interface SessionInfo {
+  kind: SessionKind
   username: string
   createdAt: number
 }
@@ -31,26 +41,55 @@ function sessionKey(token: string): string {
   return `session:${token}`
 }
 
+function guestKey(token: string): string {
+  return `guest:${token}`
+}
+
 function randomToken(): string {
   const arr = new Uint8Array(32)
   crypto.getRandomValues(arr)
   return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("")
 }
 
-/** 创建并写一个会话,返回 token。 */
+/** 创建并写一个 admin 会话,返回 token。 */
 export async function createSession(username: string): Promise<string> {
   const token = randomToken()
-  const info: SessionInfo = { username, createdAt: Date.now() }
+  const info: SessionInfo = { kind: "admin", username, createdAt: Date.now() }
   const provider = await getDataProvider()
   await provider.putRaw(sessionKey(token), JSON.stringify(info), { ex: SESSION_TTL_SECONDS })
   return token
 }
 
-/** 读 cookie 中的 token,返回会话信息;不存在/失效/过期都返回 null。 */
+/** 创建一个临时访客会话,返回 token。 */
+export async function createGuestSession(): Promise<string> {
+  const token = randomToken()
+  const info: SessionInfo = { kind: "guest", username: "guest", createdAt: Date.now() }
+  const provider = await getDataProvider()
+  await provider.putRaw(guestKey(token), JSON.stringify(info), { ex: GUEST_TTL_SECONDS })
+  return token
+}
+
+/** 读 cookie 中的 admin token,返回会话信息;不存在/失效/过期都返回 null。 */
 export async function readSession(token: string | undefined | null): Promise<SessionInfo | null> {
   if (!token) return null
   const provider = await getDataProvider()
   const raw = await provider.getRaw(sessionKey(token))
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as SessionInfo
+    // 兼容旧 session: 没有 kind 字段视为 admin
+    if (!parsed.kind) parsed.kind = "admin"
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+/** 读 cookie 中的 guest token,返回会话信息;不存在/失效/过期都返回 null。 */
+export async function readGuestSession(token: string | undefined | null): Promise<SessionInfo | null> {
+  if (!token) return null
+  const provider = await getDataProvider()
+  const raw = await provider.getRaw(guestKey(token))
   if (!raw) return null
   try {
     return JSON.parse(raw) as SessionInfo
@@ -59,11 +98,18 @@ export async function readSession(token: string | undefined | null): Promise<Ses
   }
 }
 
-/** 删一个会话。 */
+/** 删一个 admin 会话。 */
 export async function destroySession(token: string | undefined | null): Promise<void> {
   if (!token) return
   const provider = await getDataProvider()
   await provider.delRaw(sessionKey(token))
+}
+
+/** 删一个 guest 会话。 */
+export async function destroyGuestSession(token: string | undefined | null): Promise<void> {
+  if (!token) return
+  const provider = await getDataProvider()
+  await provider.delRaw(guestKey(token))
 }
 
 /** 删一个 username 关联的所有会话(改密码时用)。 */

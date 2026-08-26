@@ -18,14 +18,21 @@ import {
   SESSION_COOKIE,
   buildClearCookie,
   buildSetCookie,
+  buildSetGuestCookie,
+  buildClearGuestCookie,
   changeAdminPassword,
+  createGuestSession,
   getSessionFromCookie,
   getAdminUsername,
   login,
   logout,
   readSessionCookie,
+  readGuestCookie,
 } from "../lib/auth"
+import { checkRateLimit } from "../lib/ratelimit"
 import { getDataProvider } from "../lib/db/provider"
+import { isSecureRequest } from "../lib/utils"
+import { getSettings, updateSettings } from "../lib/settings"
 
 export const apiApp = new Hono()
 
@@ -52,18 +59,11 @@ function clientUa(c: { req: { raw?: Request; header: (k: string) => string | und
 }
 
 function isSecure(c: { req: { url: string; raw?: Request; header: (k: string) => string | undefined } }): boolean {
-  // Vercel / Cloudflare / EdgeOne 反代后, c.req.url 可能是 http (Hono 内部生成的),
-  // 实际请求是 https。x-forwarded-proto 是反代一定会设的可靠信号。
-  // 但 Vercel 有时也不设 (罕见)。用 raw URL 兜底。
-  const xfp = c.req.raw?.headers.get("x-forwarded-proto") ?? c.req.header("x-forwarded-proto")
-  if (xfp) return xfp.toLowerCase() === "https"
-  // 兜底: 看 VERCEL_ENV / NODE_ENV (Vercel production/Preview 都是 https)
-  if (process.env.VERCEL === "1") return true
-  try {
-    return new URL(c.req.url).protocol === "https:"
-  } catch {
-    return true
-  }
+  return isSecureRequest({
+    url: c.req.url,
+    raw: c.req.raw,
+    header: c.req.header,
+  })
 }
 
 function shareUnlockCookieName(shortCode: string): string {
@@ -96,18 +96,22 @@ function errToResponse(err: unknown): { status: number; body: { error: string } 
   return { status: 500, body: { error: "Internal error" } }
 }
 
+/**
+ * 要求 admin 会话 (排除 guest)。
+ * guest 拿同样的 401 提示, 让前端走 /u 入口或登录。
+ */
 async function requireAdmin(
   c: { req: { raw?: Request; path?: string; method?: string; header: (k: string) => string | undefined } },
 ): Promise<{ ok: true } | { ok: false; res: Response }> {
   const cookie = getCookie(c)
   const session = await getSessionFromCookie(cookie)
-  if (!session) {
-    // [DEBUG]
+  if (!session || session.kind !== "admin") {
     console.log("[api/requireAdmin FAIL]", {
       path: c.req.path,
       method: c.req.method,
       hasCookie: Boolean(cookie),
       cookiePreview: cookie ? cookie.slice(0, 120) : null,
+      kind: session?.kind ?? null,
     })
     return {
       ok: false,
@@ -118,6 +122,27 @@ async function requireAdmin(
     }
   }
   return { ok: true }
+}
+
+/**
+ * 要求任何 "能创建" 的会话 (admin 或 guest)。
+ * 无 session 陌生人 401, 不暴露 /u 入口或限流细节。
+ */
+async function requireCreator(
+  c: { req: { raw?: Request; path?: string; method?: string; header: (k: string) => string | undefined } },
+): Promise<{ ok: true; session: import("@/lib/auth").SessionInfo } | { ok: false; res: Response }> {
+  const cookie = getCookie(c)
+  const session = await getSessionFromCookie(cookie)
+  if (!session) {
+    return {
+      ok: false,
+      res: new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      }),
+    }
+  }
+  return { ok: true, session }
 }
 
 async function logCtx(c: { req: { raw?: Request; header: (k: string) => string | undefined } }) {
@@ -222,6 +247,28 @@ apiApp.post("/api/auth/password", async (c) => {
   }
 })
 
+/* ──────────────── settings ──────────────── */
+
+apiApp.get("/api/settings", async (c) => {
+  const guard = await requireAdmin(c)
+  if (!guard.ok) return guard.res
+  const settings = await getSettings()
+  return c.json(settings)
+})
+
+apiApp.patch("/api/settings", async (c) => {
+  const guard = await requireAdmin(c)
+  if (!guard.ok) return guard.res
+  const body = (await c.req.json().catch(() => null)) as
+    | { anonymousAccessEnabled?: boolean }
+    | null
+  if (!body || typeof body.anonymousAccessEnabled !== "boolean") {
+    return c.json({ error: "anonymousAccessEnabled (boolean) required" }, 400)
+  }
+  const next = await updateSettings({ anonymousAccessEnabled: body.anonymousAccessEnabled })
+  return c.json(next)
+})
+
 /* ──────────────── items ──────────────── */
 
 apiApp.get("/api/items", async (c) => {
@@ -238,9 +285,27 @@ apiApp.get("/api/items", async (c) => {
 
 apiApp.post("/api/items", async (c) => {
   try {
-    // 阶段 0.5: 写操作也要鉴权(未登录 -> 401)
-    const guard = await requireAdmin(c)
+    // 三种身份: admin (登录) / guest (/u 入口) / 陌生人 (无 cookie)
+    // admin 不限流; guest + 陌生人 都走 5/min/IP 限流
+    const guard = await requireCreator(c)
     if (!guard.ok) return guard.res
+
+    const session = guard.session
+    const isAdmin = session?.kind === "admin"
+
+    if (!isAdmin) {
+      // guest / 陌生人: 5 次/分钟/IP, 不暴露具体原因
+      const ip = clientIp(c) || "unknown"
+      const rl = await checkRateLimit("create", ip, 5)
+      if (!rl.allowed) {
+        c.header("X-RateLimit-Limit", String(rl.limit))
+        c.header("X-RateLimit-Remaining", "0")
+        c.header("X-RateLimit-Reset", String(Math.floor(rl.resetAt / 1000)))
+        return c.json({ error: "Unauthorized" }, 401)
+      }
+      c.header("X-RateLimit-Limit", String(rl.limit))
+      c.header("X-RateLimit-Remaining", String(rl.remaining))
+    }
 
     const body = (await c.req.json().catch(() => null)) as
       | {
