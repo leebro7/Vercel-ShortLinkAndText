@@ -608,6 +608,55 @@ apiApp.get("/api/__debug/check-test-cookie", async (c) => {
   })
 })
 
+/**
+ * [DEBUG ONLY] 写一个固定 key, 再读回, 看 Upstash 是否 round-trip 字符串 OK。
+ * 用于诊断 "session 写成功但读失败" 的情况。
+ */
+apiApp.get("/api/__debug/kv-roundtrip", async (c) => {
+  try {
+    const provider = await getDataProvider()
+    const driver = provider.constructor.name
+    const testKey = "__debug:roundtrip"
+    const testValue = "hello-" + Date.now()
+    await provider.putRaw(testKey, testValue, { ex: 60 })
+    const readBack = await provider.getRaw(testKey)
+    await provider.delRaw(testKey)
+    return c.json({
+      driver,
+      wrote: testValue,
+      readBack,
+      match: readBack === testValue,
+      typeOfReadBack: typeof readBack,
+    })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
+  }
+})
+
+/**
+ * [DEBUG ONLY] 模拟完整 session 生命周期: 写, 立刻读, 多次读。
+ * 这才是 force-session 真实路径的镜像 (Hono 端点 → session.ts → provider.putRaw)。
+ */
+apiApp.get("/api/__debug/session-roundtrip", async (c) => {
+  try {
+    const { createSession, readSession } = await import("../lib/auth/session")
+    const token = await createSession("admin")
+    const sessionKey = `session:${token}`
+    const r1 = await readSession(token)
+    const r2 = await readSession(token)
+    const r3 = await readSession(token)
+    return c.json({
+      token,
+      tokenLen: token.length,
+      sessionKey,
+      readAttempts: [r1, r2, r3],
+      allMatch: r1 !== null && r2 !== null && r3 !== null,
+    })
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
+  }
+})
+
 /* ──────────────── legacy redirect ──────────────── */
 
 /**
