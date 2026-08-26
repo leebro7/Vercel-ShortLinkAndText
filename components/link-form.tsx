@@ -74,7 +74,7 @@ export function LinkForm() {
         content: input.trim(),
       }
       if (customSuffix) body.customSuffix = customSuffix
-      if (expiresInHours) body.expiresInHours = Number(expiresInHours)
+      if (expiresInHours && expiresInHours !== "0") body.expiresInHours = Number(expiresInHours)
       if (isText && password) body.password = password
       if (isText && burnAfterReading) body.burnAfterReading = true
 

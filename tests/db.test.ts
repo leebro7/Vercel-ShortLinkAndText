@@ -98,13 +98,13 @@ describe("viewItem", () => {
     const v = await viewItem(r.item.shortCode)
     expect(v?.burned).toBe(true)
     if (v && v.item.type === "text") {
-      expect(v.item.content).toBe("") // 阅后即焚:内容被清空
+      // 阅后即焚: 内容带回去给前端一次性渲染, 然后从 KV 删
+      expect(v.item.content).toBe("secret")
+      expect(v.item.viewCount).toBe(1)
     }
-    // 第二次 view 应该能取到 burned 标记
+    // 第二次 view 应该返回 null (item 已被删)
     const v2 = await viewItem(r.item.shortCode)
-    if (v2 && v2.item.type === "text") {
-      expect(v2.item.burned).toBe(true)
-    }
+    expect(v2).toBeNull()
   })
 })
 

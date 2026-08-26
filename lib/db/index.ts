@@ -348,34 +348,40 @@ export async function viewItem(
   if (isExpired(before)) return null
 
   const now = Date.now()
-  const baseUpdate = {
-    clickCount: before.clickCount + 1,
-    lastClickedAt: now,
-  }
-  let updated: Item
   let burned = false
+  let result: Item
 
   if (before.type === "link") {
-    updated = { ...before, ...baseUpdate } as LinkItem
+    result = { ...before, clickCount: before.clickCount + 1, lastClickedAt: now } as LinkItem
+    await provider.putItem(result)
   } else {
-    const baseText = { ...before, ...baseUpdate, viewCount: before.viewCount + 1 } as TextItem
     if (before.burnAfterReading && !before.burned) {
-      // 阅后即焚:清空内容但保留占位,避免链接被立刻复活
-      updated = { ...baseText, burned: true, content: "", textPreview: "" } as TextItem
+      // 阅后即焚: 累加 viewCount, 然后立即从 KV 中删除。
+      // 把"带原始内容"的快照返回, 让前端能渲染一次; 之后访问就是 404。
       burned = true
+      result = {
+        ...before,
+        viewCount: before.viewCount + 1,
+        lastClickedAt: now,
+      } as TextItem
+      await provider.deleteItem(shortCode)
     } else {
-      updated = baseText
+      result = {
+        ...before,
+        clickCount: before.clickCount + 1,
+        viewCount: before.viewCount + 1,
+        lastClickedAt: now,
+      } as TextItem
+      await provider.putItem(result)
     }
   }
-
-  await provider.putItem(updated)
 
   await log(
     { action: burned ? "burn" : "view", shortCode, ip: ctx.ip, userAgent: ctx.userAgent },
     { type: before.type, hadPassword: before.type === "text" && Boolean(before.passwordHash) },
   )
 
-  return { item: redacted(updated), burned }
+  return { item: redacted(result), burned }
 }
 
 /** 给非管理员 / 公共查看用:把密码哈希清掉。 */

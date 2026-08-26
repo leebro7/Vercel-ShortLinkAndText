@@ -167,16 +167,17 @@ export default function TextSharePage({
           </div>
           <Card className="mt-6">
             <CardContent className="pt-6">
-              {view.burned ? (
-                <p className="text-muted-foreground italic">
-                  这条分享已被阅后即焚,内容已销毁。
-                </p>
-              ) : view.item.contentFormat === "markdown" ? (
+              {view.item.contentFormat === "markdown" ? (
                 <Markdown>{view.item.content}</Markdown>
               ) : (
                 <div className="whitespace-pre-wrap break-words font-serif text-base leading-relaxed">
                   {view.item.content}
                 </div>
+              )}
+              {view.burned && (
+                <p className="mt-6 border-t pt-6 text-sm text-muted-foreground italic">
+                  这条分享已被阅后即焚。再次访问将显示 404。
+                </p>
               )}
             </CardContent>
           </Card>
