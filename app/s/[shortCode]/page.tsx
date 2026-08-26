@@ -11,6 +11,7 @@ import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Markdown } from "@/components/markdown"
 import type { ContentFormat } from "@/lib/db/types"
+import { cn } from "@/lib/utils"
 
 interface Meta {
   type: "link" | "text"
@@ -175,7 +176,10 @@ export default function TextSharePage({
     return (
       <main className="min-h-[100dvh] flex flex-col">
         <header className="px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground">
+          <Link
+            href="/"
+            className="link-quiet font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground"
+          >
             ~/short-link
           </Link>
           <div className="flex items-center gap-3">
@@ -189,19 +193,28 @@ export default function TextSharePage({
           </div>
         </header>
         <article className="flex-1 px-6 py-8 max-w-2xl mx-auto w-full">
-          <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
-            shared · {new Date(view.item.createdAt).toLocaleDateString("zh-CN")}
-          </p>
-          <div className="mt-2 flex items-center gap-2 font-mono text-xs text-muted-foreground flex-wrap">
+          <div className="flex items-baseline gap-3 flex-wrap">
+            <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
+              shared note
+            </p>
+            <p className="font-mono text-xs text-muted-foreground/70">
+              {new Date(view.item.createdAt).toLocaleDateString("zh-CN", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })}
+            </p>
+          </div>
+          <div className="mt-3 flex items-center gap-3 font-mono text-xs flex-wrap">
             {meta?.burnAfterReading && (
-              <span className="flex items-center gap-1">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                 <Flame className="h-3 w-3" /> 阅后即焚
               </span>
             )}
-            <span>已查看 {view.item.viewCount} 次</span>
+            <span className="text-muted-foreground">已查看 {view.item.viewCount} 次</span>
           </div>
-          <Card className="mt-6">
-            <CardContent className="pt-6">
+          <Card className="mt-6 shadow-[0_1px_2px_oklch(0.22_0.015_60/0.04),0_8px_24px_-12px_oklch(0.22_0.015_60/0.08)] border-border/60">
+            <CardContent className="px-6 py-7 sm:px-8 sm:py-8">
               {viewFormat === "markdown" ? (
                 <Markdown>{view.item.content}</Markdown>
               ) : (
@@ -210,9 +223,12 @@ export default function TextSharePage({
                 </div>
               )}
               {view.burned && (
-                <p className="mt-6 border-t pt-6 text-sm text-muted-foreground italic">
-                  这条分享已被阅后即焚。再次访问将显示 404。
-                </p>
+                <div className="mt-8 pt-6 border-t border-dashed border-border flex items-start gap-2.5">
+                  <Flame className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <p className="text-sm text-muted-foreground italic">
+                    这条分享已被阅后即焚。再次访问将显示 404。
+                  </p>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -220,13 +236,19 @@ export default function TextSharePage({
             {canToggleFormat && viewFormat === "plain" && (
               <Button
                 onClick={() => handleFormatChange("markdown")}
-                variant="ghost"
+                variant="outline"
                 size="sm"
+                className="border-primary/30 text-primary hover:bg-primary/5 hover:text-primary hover:border-primary/50"
               >
                 <Eye className="mr-1.5 h-3.5 w-3.5" /> 看 MD 预览
               </Button>
             )}
-            <Button onClick={handleCopy} variant="ghost" size="sm">
+            <Button
+              onClick={handleCopy}
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-foreground"
+            >
               {copied ? (
                 <>
                   <Check className="mr-1.5 h-3.5 w-3.5" /> 已复制
@@ -330,14 +352,43 @@ function FormatToggle({
   disabled: boolean
 }) {
   return (
-    <select
-      value={format}
-      onChange={(e) => onChange(e.target.value as ContentFormat)}
-      disabled={disabled}
-      className="text-xs font-mono px-2 py-1 rounded border bg-background/50 hover:bg-accent/50 transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+    <div
+      role="group"
+      aria-label="渲染格式"
+      className="inline-flex items-center rounded-md border bg-background/60 p-0.5"
     >
-      <option value="markdown">MD</option>
-      <option value="plain">纯文本</option>
-    </select>
+      <button
+        type="button"
+        onClick={() => onChange("markdown")}
+        disabled={disabled}
+        aria-pressed={format === "markdown"}
+        className={cn(
+          "h-6 px-2.5 text-xs font-mono rounded-sm transition-colors duration-150",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          format === "markdown"
+            ? "bg-foreground text-background shadow-sm"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        MD
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("plain")}
+        disabled={disabled}
+        aria-pressed={format === "plain"}
+        className={cn(
+          "h-6 px-2.5 text-xs font-mono rounded-sm transition-colors duration-150",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+          format === "plain"
+            ? "bg-foreground text-background shadow-sm"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        纯文本
+      </button>
+    </div>
   )
 }

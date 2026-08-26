@@ -4,79 +4,89 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* 奶白底: 暖色高色温白, 偏黄, 不刺眼 */
+  --background: oklch(0.985 0.012 80);
+  /* warm graphite: 暖深灰, 不是纯黑 */
+  --foreground: oklch(0.22 0.015 60);
+  --card: oklch(0.995 0.008 85);
+  --card-foreground: oklch(0.22 0.015 60);
+  --popover: oklch(0.995 0.008 85);
+  --popover-foreground: oklch(0.22 0.015 60);
+  /* 赭橙 primary: 暖橙偏赭, 沉稳不扎眼 */
+  --primary: oklch(0.55 0.13 50);
+  --primary-foreground: oklch(0.99 0.005 80);
+  --secondary: oklch(0.95 0.018 75);
+  --secondary-foreground: oklch(0.28 0.02 60);
+  --muted: oklch(0.96 0.015 78);
+  /* 暖中灰: 替代冷灰, 保留 4.5:1 对比 */
+  --muted-foreground: oklch(0.5 0.018 65);
+  --accent: oklch(0.94 0.025 70);
+  --accent-foreground: oklch(0.28 0.02 60);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.99 0.005 80);
+  --border: oklch(0.9 0.015 75);
+  --input: oklch(0.9 0.015 75);
+  --ring: oklch(0.55 0.13 50);
+  --chart-1: oklch(0.55 0.13 50);
+  --chart-2: oklch(0.6 0.08 160);
+  --chart-3: oklch(0.4 0.05 250);
+  --chart-4: oklch(0.7 0.12 90);
+  --chart-5: oklch(0.65 0.14 30);
+  --radius: 0.5rem;
+  --sidebar: oklch(0.985 0.012 80);
+  --sidebar-foreground: oklch(0.22 0.015 60);
+  --sidebar-primary: oklch(0.55 0.13 50);
+  --sidebar-primary-foreground: oklch(0.99 0.005 80);
+  --sidebar-accent: oklch(0.95 0.018 75);
+  --sidebar-accent-foreground: oklch(0.28 0.02 60);
+  --sidebar-border: oklch(0.9 0.015 75);
+  --sidebar-ring: oklch(0.55 0.13 50);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  /* 暗色奶白底, 偏暖深色 */
+  --background: oklch(0.18 0.012 60);
+  /* 暖浅色文本, 替代纯白 */
+  --foreground: oklch(0.95 0.008 80);
+  --card: oklch(0.22 0.012 60);
+  --card-foreground: oklch(0.95 0.008 80);
+  --popover: oklch(0.22 0.012 60);
+  --popover-foreground: oklch(0.95 0.008 80);
+  /* 暗模式下赭橙提亮 */
+  --primary: oklch(0.72 0.14 55);
+  --primary-foreground: oklch(0.18 0.012 60);
+  --secondary: oklch(0.28 0.012 60);
+  --secondary-foreground: oklch(0.95 0.008 80);
+  --muted: oklch(0.26 0.012 60);
+  /* 暗模式暖中亮灰, 保 4.5:1 */
+  --muted-foreground: oklch(0.7 0.015 75);
+  --accent: oklch(0.3 0.025 65);
+  --accent-foreground: oklch(0.95 0.008 80);
+  --destructive: oklch(0.55 0.2 25);
+  --destructive-foreground: oklch(0.95 0.008 80);
+  --border: oklch(0.3 0.012 60);
+  --input: oklch(0.3 0.012 60);
+  --ring: oklch(0.72 0.14 55);
+  --chart-1: oklch(0.72 0.14 55);
+  --chart-2: oklch(0.7 0.1 160);
+  --chart-3: oklch(0.7 0.1 250);
+  --chart-4: oklch(0.75 0.13 90);
+  --chart-5: oklch(0.7 0.15 30);
+  --sidebar: oklch(0.2 0.012 60);
+  --sidebar-foreground: oklch(0.95 0.008 80);
+  --sidebar-primary: oklch(0.72 0.14 55);
+  --sidebar-primary-foreground: oklch(0.18 0.012 60);
+  --sidebar-accent: oklch(0.28 0.012 60);
+  --sidebar-accent-foreground: oklch(0.95 0.008 80);
+  --sidebar-border: oklch(0.3 0.012 60);
+  --sidebar-ring: oklch(0.72 0.14 55);
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  /* Source Serif 4 (衬线, 人文) + JetBrains Mono (等宽, 短码) — README 钦定 */
+  --font-sans: var(--font-source-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-serif: var(--font-source-serif), ui-serif, Georgia, serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -122,4 +132,261 @@
   body {
     @apply bg-background text-foreground;
   }
+  ::selection {
+    background: oklch(0.55 0.13 50 / 0.18);
+  }
+}
+
+/* =========================================================================
+   Markdown 排版 (.md-prose)
+   衬线人文, 暖色调, 链接赭橙下划线, 代码块暖灰
+   ========================================================================= */
+.md-prose {
+  color: var(--foreground);
+  font-family: var(--font-source-serif), ui-serif, Georgia, serif;
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  word-wrap: break-word;
+}
+
+.md-prose > * + * {
+  margin-top: 1.1em;
+}
+
+.md-prose h1,
+.md-prose h2,
+.md-prose h3,
+.md-prose h4,
+.md-prose h5,
+.md-prose h6 {
+  font-family: var(--font-source-serif), ui-serif, Georgia, serif;
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  color: var(--foreground);
+  line-height: 1.25;
+  scroll-margin-top: 5rem;
+}
+
+.md-prose h1 {
+  font-size: 1.875rem;
+  margin-top: 2em;
+  margin-bottom: 0.6em;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid var(--border);
+}
+
+.md-prose h2 {
+  font-size: 1.5rem;
+  margin-top: 1.8em;
+  margin-bottom: 0.5em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--border);
+}
+
+.md-prose h3 {
+  font-size: 1.25rem;
+  margin-top: 1.5em;
+  margin-bottom: 0.4em;
+}
+
+.md-prose h4 {
+  font-size: 1.1rem;
+  margin-top: 1.3em;
+  margin-bottom: 0.3em;
+}
+
+.md-prose p {
+  margin: 0;
+}
+
+.md-prose a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: oklch(0.55 0.13 50 / 0.35);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+  transition: text-decoration-color 180ms ease-out, color 180ms ease-out;
+}
+
+.md-prose a:hover {
+  text-decoration-color: var(--primary);
+  text-decoration-thickness: 2px;
+}
+
+.md-prose strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.md-prose em {
+  font-style: italic;
+}
+
+.md-prose blockquote {
+  margin: 0;
+  padding: 0.3em 0 0.3em 1em;
+  background: linear-gradient(
+    to right,
+    oklch(from var(--primary) l c h / 0.08) 0%,
+    transparent 40%
+  );
+  color: var(--muted-foreground);
+  font-style: italic;
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.md-prose blockquote > * + * {
+  margin-top: 1em;
+}
+
+.md-prose ul,
+.md-prose ol {
+  margin: 0;
+  padding-left: 1.6em;
+}
+
+.md-prose ul {
+  list-style: disc;
+}
+
+.md-prose ol {
+  list-style: decimal;
+}
+
+.md-prose li {
+  margin-top: 0.4em;
+  padding-left: 0.25em;
+}
+
+.md-prose li::marker {
+  color: var(--muted-foreground);
+}
+
+.md-prose li > p {
+  margin: 0;
+}
+
+.md-prose li > ul,
+.md-prose li > ol {
+  margin-top: 0.4em;
+}
+
+.md-prose code {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.9em;
+  padding: 0.15em 0.4em;
+  border-radius: 0.3em;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font-weight: 500;
+}
+
+.md-prose pre {
+  margin: 0;
+  padding: 1em 1.2em;
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  border-radius: var(--radius-lg);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+}
+
+.md-prose pre code {
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+}
+
+.md-prose hr {
+  margin: 2.5em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.md-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+.md-prose thead {
+  border-bottom: 2px solid var(--border);
+}
+
+.md-prose th,
+.md-prose td {
+  text-align: left;
+  padding: 0.6em 0.8em;
+  border-bottom: 1px solid var(--border);
+}
+
+.md-prose th {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.md-prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  margin: 0.5em 0;
+}
+
+.md-prose figure {
+  margin: 0;
+}
+
+.md-prose figcaption {
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  margin-top: 0.5em;
+}
+
+.md-prose kbd {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 0.85em;
+  padding: 0.15em 0.45em;
+  border-radius: 0.3em;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 0 var(--border);
+  color: var(--foreground);
+}
+
+.md-prose .katex-display {
+  margin: 1.2em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* =========================================================================
+   链接下划线动效 (header logo / inline)
+   ========================================================================= */
+.link-quiet {
+  position: relative;
+  transition: color 200ms ease-out;
+}
+
+.link-quiet::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -2px;
+  width: 100%;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 220ms ease-out;
+}
+
+.link-quiet:hover::after {
+  transform: scaleX(1);
 }
