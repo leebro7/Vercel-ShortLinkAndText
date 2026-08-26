@@ -1,15 +1,39 @@
 "use client"
 
-import { use, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { use } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { Lock, Loader2, AlertCircle, FileText, Flame, Sparkles, Copy, Check } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Lock, Loader2, AlertCircle, FileText, Flame, Sparkles, Copy, Check, FileType, FileText as FileTypeIcon } from "lucide-react"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Markdown } from "@/components/markdown"
+
+function FormatToggle({
+  format,
+  onChange,
+  disabled,
+}: {
+  format: "markdown" | "plain"
+  onChange: (format: "markdown" | "plain") => void
+  disabled: boolean
+}) {
+  return (
+    <select
+      value={format}
+      onChange={(e) => onChange(e.target.value as "markdown" | "plain")}
+      disabled={disabled}
+      className="text-xs font-mono px-2 py-1 rounded border bg-background/50 hover:bg-accent/50 transition-colors focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <option value="markdown">MD</option>
+      <option value="plain">纯文本</option>
+    </select>
+  )
+}
 
 interface Meta {
   type: "link" | "text"
@@ -41,7 +65,7 @@ export default function TextSharePage({
 }: {
   params: Promise<{ shortCode: string }>
 }) {
-  const { shortCode } = use(params)
+  const [shortCode, setShortCode] = useState<string>("")
   const router = useRouter()
   const [meta, setMeta] = useState<Meta | null>(null)
   const [view, setView] = useState<ViewPayload | null>(null)
@@ -50,9 +74,12 @@ export default function TextSharePage({
   const [error, setError] = useState("")
   const [notFound, setNotFound] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [viewFormat, setViewFormat] = useState<"markdown" | "plain">(
+    meta?.contentFormat ?? "markdown"
+  )
 
   useEffect(() => {
-    void (async () => {
+    const init = async () => {
       try {
         const res = await fetch(`/api/items/${shortCode}/meta`)
         if (res.status === 404) {
@@ -68,7 +95,8 @@ export default function TextSharePage({
       } catch {
         setError("加载失败")
       }
-    })()
+    }
+    init()
   }, [shortCode])
 
   async function loadView() {
@@ -85,6 +113,9 @@ export default function TextSharePage({
     }
     const data = (await res.json()) as ViewPayload
     setView(data)
+    if (data.item.contentFormat) {
+      setViewFormat(data.item.contentFormat)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -146,13 +177,16 @@ export default function TextSharePage({
           <Link href="/" className="font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground">
             ~/short-link
           </Link>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <FormatToggle format={viewFormat} onChange={setViewFormat} disabled={view.item.contentFormat === "plain"} />
+            <ThemeToggle />
+          </div>
         </header>
         <article className="flex-1 px-6 py-8 max-w-2xl mx-auto w-full">
           <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
             shared · {new Date(view.item.createdAt).toLocaleDateString("zh-CN")}
           </p>
-          <div className="mt-2 flex items-center gap-2 font-mono text-xs text-muted-foreground">
+          <div className="mt-2 flex items-center gap-2 font-mono text-xs text-muted-foreground flex-wrap">
             {meta?.burnAfterReading && (
               <span className="flex items-center gap-1">
                 <Flame className="h-3 w-3" /> 阅后即焚
@@ -164,10 +198,11 @@ export default function TextSharePage({
               </span>
             )}
             <span>已查看 {view.item.viewCount} 次</span>
+            <FormatToggle format={viewFormat} onChange={setViewFormat} disabled={view.item.contentFormat === "plain"} />
           </div>
           <Card className="mt-6">
             <CardContent className="pt-6">
-              {view.item.contentFormat === "markdown" ? (
+              {viewFormat === "markdown" ? (
                 <Markdown>{view.item.content}</Markdown>
               ) : (
                 <div className="whitespace-pre-wrap break-words font-serif text-base leading-relaxed">
@@ -206,7 +241,10 @@ export default function TextSharePage({
         <Link href="/" className="font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground">
           ~/short-link
         </Link>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <FormatToggle format={viewFormat} onChange={setViewFormat} disabled={true} />
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className="flex-1 flex items-center justify-center px-6">
