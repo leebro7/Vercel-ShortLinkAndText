@@ -187,7 +187,14 @@ export async function createItem(
 
   return {
     item,
-    shortUrl: ctx.baseUrl ? `${ctx.baseUrl}/${shortCode}` : `/${shortCode}`,
+    shortUrl:
+      item.type === "text"
+        ? ctx.baseUrl
+          ? `${ctx.baseUrl}/s/${shortCode}`
+          : `/s/${shortCode}`
+        : ctx.baseUrl
+          ? `${ctx.baseUrl}/${shortCode}`
+          : `/${shortCode}`,
     hasPassword: Boolean(input.password),
   }
 }
