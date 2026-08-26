@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { Lock, Loader2, AlertCircle, FileText, Flame, Copy, Check, Eye } from "lucide-react"
+import { Lock, Loader2, AlertCircle, FileText, Copy, Check, Eye } from "lucide-react"
+import { Flame, Envelope, Dot, PageGone, Feather } from "@/components/svg/illustrations"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Markdown } from "@/components/markdown"
@@ -158,15 +159,31 @@ export default function TextSharePage({
 
   if (notFound) {
     return (
-      <main className="min-h-[100dvh] flex items-center justify-center px-6">
-        <div className="max-w-md w-full text-center">
-          <p className="font-mono text-xs tracking-widest uppercase text-muted-foreground">
-            not found
-          </p>
-          <h1 className="mt-6 text-3xl font-semibold">没找到这份分享</h1>
-          <Button asChild className="mt-10">
-            <Link href="/">回到首页</Link>
-          </Button>
+      <main className="min-h-[100dvh] flex flex-col">
+        <header className="px-6 py-4 flex items-center justify-between">
+          <Link
+            href="/"
+            className="link-quiet flex items-center gap-2 font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground"
+          >
+            <Envelope className="h-4 w-4 text-primary" />
+            <span>~/short-link</span>
+          </Link>
+          <ThemeToggle />
+        </header>
+        <div className="flex-1 flex items-center justify-center px-6">
+          <div className="max-w-md w-full text-center">
+            <PageGone className="h-16 w-16 mx-auto text-muted-foreground/40" />
+            <p className="mt-6 font-mono text-xs tracking-widest uppercase text-muted-foreground">
+              not found
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold">没找到这份分享</h1>
+            <p className="mt-4 text-sm text-muted-foreground leading-relaxed">
+              短链接或分享不存在,或已经过期。
+            </p>
+            <Button asChild className="mt-10">
+              <Link href="/">回到首页</Link>
+            </Button>
+          </div>
         </div>
       </main>
     )
@@ -178,9 +195,10 @@ export default function TextSharePage({
         <header className="px-6 py-4 flex items-center justify-between">
           <Link
             href="/"
-            className="link-quiet font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground"
+            className="link-quiet flex items-center gap-2 font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground"
           >
-            ~/short-link
+            <Envelope className="h-4 w-4 text-primary" />
+            <span>~/short-link</span>
           </Link>
           <div className="flex items-center gap-3">
             <FormatToggle
@@ -205,11 +223,14 @@ export default function TextSharePage({
               })}
             </p>
           </div>
-          <div className="mt-3 flex items-center gap-3 font-mono text-xs flex-wrap">
+          <div className="mt-3 flex items-center gap-2.5 font-mono text-xs flex-wrap">
             {meta?.burnAfterReading && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                 <Flame className="h-3 w-3" /> 阅后即焚
               </span>
+            )}
+            {meta?.burnAfterReading && (
+              <Dot className="h-1 w-1 text-muted-foreground/50" />
             )}
             <span className="text-muted-foreground">已查看 {view.item.viewCount} 次</span>
           </div>
@@ -224,7 +245,7 @@ export default function TextSharePage({
               )}
               {view.burned && (
                 <div className="mt-8 pt-6 border-t border-dashed border-border flex items-start gap-2.5">
-                  <Flame className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                  <Flame className="h-4 w-4 text-primary mt-0.5 shrink-0 animate-flame" />
                   <p className="text-sm text-muted-foreground italic">
                     这条分享已被阅后即焚。再次访问将显示 404。
                   </p>
@@ -268,8 +289,12 @@ export default function TextSharePage({
   return (
     <div className="min-h-[100dvh] flex flex-col">
       <header className="px-6 py-4 flex items-center justify-between">
-        <Link href="/" className="font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground">
-          ~/short-link
+        <Link
+          href="/"
+          className="link-quiet flex items-center gap-2 font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground"
+        >
+          <Envelope className="h-4 w-4 text-primary" />
+          <span>~/short-link</span>
         </Link>
         <ThemeToggle />
       </header>
@@ -292,9 +317,12 @@ export default function TextSharePage({
                 <p className="mt-1 font-mono text-xs text-muted-foreground flex items-center gap-2">
                   <span>创建于 {new Date(meta.createdAt).toLocaleDateString("zh-CN")}</span>
                   {meta.burnAfterReading && (
-                    <span className="flex items-center gap-1">
-                      <Flame className="h-3 w-3" /> 阅后即焚
-                    </span>
+                    <>
+                      <Dot className="h-1 w-1 text-muted-foreground/50" />
+                      <span className="flex items-center gap-1 text-primary">
+                <Flame className="h-3 w-3 animate-flame" /> 阅后即焚
+                      </span>
+                    </>
                   )}
                 </p>
               </div>
@@ -332,7 +360,10 @@ export default function TextSharePage({
                   验证中…
                 </>
               ) : (
-                "查看"
+                <>
+                  <Feather className="mr-1.5 h-3.5 w-3.5" />
+                  查看
+                </>
               )}
             </Button>
           </form>

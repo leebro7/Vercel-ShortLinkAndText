@@ -390,3 +390,30 @@
 .link-quiet:hover::after {
   transform: scaleX(1);
 }
+
+/* =========================================================================
+   SVG 微动效 — 火苗脉动
+   唯一动效: 阅后即焚徽章的 Flame 轻微脉动
+   遵守 prefers-reduced-motion
+   ========================================================================= */
+@keyframes flame-flicker {
+  0%, 100% {
+    transform: scaleY(1) translateY(0);
+    opacity: 1;
+  }
+  50% {
+    transform: scaleY(1.06) translateY(-0.5px);
+    opacity: 0.92;
+  }
+}
+
+.animate-flame {
+  animation: flame-flicker 1.8s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-flame {
+    animation: none;
+  }
+}
