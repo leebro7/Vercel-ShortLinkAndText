@@ -106,6 +106,43 @@ describe("viewItem", () => {
     const v2 = await viewItem(r.item.shortCode)
     expect(v2).toBeNull()
   })
+
+  it("link: maxClicks=1 阅后即焚 (link 通用次数限制)", async () => {
+    const r = await createItem({ type: "link", content: "https://example.com", maxClicks: 1 })
+    expect(r.item.type).toBe("link")
+    if (r.item.type === "link") {
+      expect(r.item.maxClicks).toBe(1)
+    }
+    const v1 = await viewItem(r.item.shortCode)
+    expect(v1?.burned).toBe(true)
+    if (v1 && v1.item.type === "link") {
+      expect(v1.item.clickCount).toBe(1)
+    }
+    // 第二次访问: 404
+    const v2 = await viewItem(r.item.shortCode)
+    expect(v2).toBeNull()
+  })
+
+  it("link: maxClicks=3 三次后失效", async () => {
+    const r = await createItem({ type: "link", content: "https://example.com", maxClicks: 3 })
+    const v1 = await viewItem(r.item.shortCode)
+    expect(v1?.burned).toBe(false)
+    const v2 = await viewItem(r.item.shortCode)
+    expect(v2?.burned).toBe(false)
+    const v3 = await viewItem(r.item.shortCode)
+    expect(v3?.burned).toBe(true) // 第 3 次触发 burn
+    const v4 = await viewItem(r.item.shortCode)
+    expect(v4).toBeNull()
+  })
+
+  it("link: 无 maxClicks 不限次数", async () => {
+    const r = await createItem({ type: "link", content: "https://example.com" })
+    for (let i = 0; i < 5; i++) {
+      const v = await viewItem(r.item.shortCode)
+      expect(v).not.toBeNull()
+      expect(v?.burned).toBe(false)
+    }
+  })
 })
 
 describe("updateItem", () => {

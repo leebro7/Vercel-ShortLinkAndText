@@ -44,6 +44,7 @@ export function LinkForm() {
   const [expiresInHours, setExpiresInHours] = useState("0")
   const [password, setPassword] = useState("")
   const [burnAfterReading, setBurnAfterReading] = useState(false)
+  const [maxClicks, setMaxClicks] = useState<string>("0") // 0 = 无限
   const [contentFormat, setContentFormat] = useState<"plain" | "markdown">("markdown")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
@@ -77,8 +78,14 @@ export function LinkForm() {
       if (customSuffix) body.customSuffix = customSuffix
       if (expiresInHours && expiresInHours !== "0") body.expiresInHours = Number(expiresInHours)
       if (isText && password) body.password = password
-      if (isText && burnAfterReading) body.burnAfterReading = true
       if (isText) body.contentFormat = contentFormat
+      // maxClicks: "0" = 无限, 正整数 = 限制次数
+      // 兼容旧 burnAfterReading (text 阅后即焚 = maxClicks: 1)
+      if (maxClicks && maxClicks !== "0") {
+        body.maxClicks = Number(maxClicks)
+      } else if (isText && burnAfterReading) {
+        body.maxClicks = 1
+      }
 
       const response = await fetch("/api/items", {
         method: "POST",
@@ -245,17 +252,27 @@ export function LinkForm() {
                     />
                   </div>
                 )}
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={burnAfterReading}
-                    onChange={(e) => setBurnAfterReading(e.target.checked)}
-                    disabled={isLoading}
-                    className="h-4 w-4 rounded border-input"
-                  />
-                  <Flame className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>阅后即焚(首次访问后立即销毁)</span>
-                </label>
+                <div className="space-y-1.5">
+                  <Label htmlFor="maxClicks" className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Flame className="h-3 w-3" /> 访问次数限制
+                  </Label>
+                  <Select value={maxClicks} onValueChange={setMaxClicks} disabled={isLoading}>
+                    <SelectTrigger id="maxClicks" className="font-mono text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">不限制</SelectItem>
+                      <SelectItem value="1">1 次(阅后即焚)</SelectItem>
+                      <SelectItem value="3">3 次</SelectItem>
+                      <SelectItem value="5">5 次</SelectItem>
+                      <SelectItem value="10">10 次</SelectItem>
+                      <SelectItem value="50">50 次</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    达到次数后链接自动失效
+                  </p>
+                </div>
               </CollapsibleContent>
             </Collapsible>
 

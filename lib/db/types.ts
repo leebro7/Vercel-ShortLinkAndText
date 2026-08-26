@@ -17,6 +17,11 @@ export interface BaseItem {
   shortCode: string
   expiresAt?: number
   clickCount: number
+  /**
+   * 最大访问次数。undefined = 无限。
+   * link/text 都用同一字段, 阅后即焚在 link 上 = maxClicks: 1
+   */
+  maxClicks?: number
   createdAt: number
   lastClickedAt?: number
 }

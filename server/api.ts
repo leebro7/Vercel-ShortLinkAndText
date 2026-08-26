@@ -251,6 +251,7 @@ apiApp.post("/api/items", async (c) => {
           contentFormat?: "plain" | "markdown"
           password?: string
           burnAfterReading?: boolean
+          maxClicks?: number
         }
       | null
     if (!body) return c.json({ error: "Invalid JSON body" }, 400)
@@ -265,6 +266,7 @@ apiApp.post("/api/items", async (c) => {
         contentFormat: body.contentFormat,
         password: body.password,
         burnAfterReading: body.burnAfterReading,
+        maxClicks: body.maxClicks,
       },
       { baseUrl, ...(await logCtx(c)) },
     )

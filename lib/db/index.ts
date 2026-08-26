@@ -58,6 +58,8 @@ export interface CreateItemInput {
   contentFormat?: ContentFormat
   password?: string
   burnAfterReading?: boolean
+  /** 最大访问次数。undefined = 无限; 1 = 阅后即焚(link/text 通用) */
+  maxClicks?: number
 }
 
 export interface CreateItemResult {
@@ -111,6 +113,12 @@ export async function createItem(
     }
   }
 
+  if (input.maxClicks !== undefined && input.maxClicks !== null) {
+    if (typeof input.maxClicks !== "number" || !Number.isInteger(input.maxClicks) || input.maxClicks < 1) {
+      throw new DomainError("Max clicks must be a positive integer", 400)
+    }
+  }
+
   const provider = await getDataProvider()
   const existing = await provider.listItems()
 
@@ -138,11 +146,15 @@ export async function createItem(
     ? Date.now() + input.expiresInHours * 60 * 60 * 1000
     : undefined
 
+  // 统一次数限制: maxClicks 优先; burnAfterReading 是 maxClicks: 1 的别名
+  const maxClicks = input.maxClicks ?? (input.burnAfterReading ? 1 : undefined)
+
   const base = {
     id: randomId(),
     shortCode,
     expiresAt,
     clickCount: 0,
+    maxClicks,
     createdAt: Date.now(),
   } as const
 
@@ -221,8 +233,10 @@ export interface UpdateItemInput {
   expiresAt?: number | null
   /** 修改密码(text)。空字符串 = 取消密码。undefined = 不动 */
   password?: string | null
-  /** 改阅后即焚 */
+  /** 改阅后即焚 (text; link 通用用 maxClicks) */
   burnAfterReading?: boolean
+  /** 改最大访问次数。null = 无限 (清除); undefined = 不动 */
+  maxClicks?: number | null
   /** 改内容格式(text) */
   contentFormat?: ContentFormat
   /** 重命名 shortCode */
@@ -257,10 +271,17 @@ export async function updateItem(
       originalUrl = linkPatch.content
     }
     const expiresAt = linkPatch.expiresAt === undefined ? before.expiresAt : (linkPatch.expiresAt ?? undefined)
+    const maxClicks =
+      linkPatch.maxClicks === undefined
+        ? before.maxClicks
+        : linkPatch.maxClicks === null
+        ? undefined
+        : linkPatch.maxClicks
     next = {
       ...before,
       originalUrl,
       expiresAt,
+      maxClicks,
     } as LinkItem
   } else {
     const textPatch = patch as UpdateItemInput
@@ -284,6 +305,12 @@ export async function updateItem(
     }
     const burnAfterReading =
       textPatch.burnAfterReading === undefined ? before.burnAfterReading : textPatch.burnAfterReading
+    const maxClicks =
+      textPatch.maxClicks === undefined
+        ? before.maxClicks
+        : textPatch.maxClicks === null
+        ? undefined
+        : textPatch.maxClicks
     const contentFormat =
       textPatch.contentFormat === undefined ? before.contentFormat : textPatch.contentFormat
     next = {
@@ -293,6 +320,7 @@ export async function updateItem(
       expiresAt,
       passwordHash,
       burnAfterReading,
+      maxClicks,
       contentFormat,
     } as TextItem
   }
@@ -348,27 +376,40 @@ export async function viewItem(
   if (isExpired(before)) return null
 
   const now = Date.now()
-  let burned = false
+  const nextCount = before.clickCount + 1
+  const limit = before.maxClicks
+  // 是否此次访问后会达到上限
+  const willExhaust = typeof limit === "number" && nextCount >= limit
+  // link 类型若会达到 maxClicks: 1, 视为"阅后即焚"
+  const willBurn = willExhaust
   let result: Item
+  let burned = false
 
   if (before.type === "link") {
-    result = { ...before, clickCount: before.clickCount + 1, lastClickedAt: now } as LinkItem
-    await provider.putItem(result)
-  } else {
-    if (before.burnAfterReading && !before.burned) {
-      // 阅后即焚: 累加 viewCount, 然后立即从 KV 中删除。
-      // 把"带原始内容"的快照返回, 让前端能渲染一次; 之后访问就是 404。
+    if (willBurn) {
+      // link 阅后即焚 (maxClicks: 1): 删除, 这次仍返回原 URL
+      result = { ...before, clickCount: nextCount, lastClickedAt: now } as LinkItem
+      await provider.deleteItem(shortCode)
       burned = true
+    } else {
+      result = { ...before, clickCount: nextCount, lastClickedAt: now } as LinkItem
+      await provider.putItem(result)
+    }
+  } else {
+    if (willBurn) {
+      // text 阅后即焚: 删除, 但带原始内容返回, 让前端渲染一次
       result = {
         ...before,
+        clickCount: nextCount,
         viewCount: before.viewCount + 1,
         lastClickedAt: now,
       } as TextItem
       await provider.deleteItem(shortCode)
+      burned = true
     } else {
       result = {
         ...before,
-        clickCount: before.clickCount + 1,
+        clickCount: nextCount,
         viewCount: before.viewCount + 1,
         lastClickedAt: now,
       } as TextItem
@@ -378,7 +419,12 @@ export async function viewItem(
 
   await log(
     { action: burned ? "burn" : "view", shortCode, ip: ctx.ip, userAgent: ctx.userAgent },
-    { type: before.type, hadPassword: before.type === "text" && Boolean(before.passwordHash) },
+    {
+      type: before.type,
+      hadPassword: before.type === "text" && Boolean(before.passwordHash),
+      clicks: nextCount,
+      maxClicks: limit,
+    },
   )
 
   return { item: redacted(result), burned }
