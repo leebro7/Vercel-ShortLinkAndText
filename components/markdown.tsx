@@ -12,8 +12,14 @@ interface Props {
 
 /**
  * 受限 Markdown 渲染:GitHub Flavored + 数学公式。
- * - 禁用 raw HTML(避免 XSS):react-markdown 默认行为。
- * - 样式通过 .md-prose 工具类定义于 globals.css。
+ *
+ * XSS 防御:
+ * - react-markdown 默认不渲染 raw HTML (HTML 标签当文字输出)
+ * - urlTransform 拒绝 javascript: / data: / vbscript: 等危险 URL
+ * - 所有 <a> 强制 target="_blank" rel="noopener noreferrer"
+ * - 所有 <img> 强制 lazy loading
+ *
+ * 样式通过 .md-prose 工具类定义于 globals.css。
  */
 export function Markdown({ children }: Props) {
   return (
@@ -22,9 +28,39 @@ export function Markdown({ children }: Props) {
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
-          a: (props) => (
-            <a {...props} target="_blank" rel="noopener noreferrer" />
+          a: ({ href, children: aChildren, ...props }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              {...props}
+            >
+              {aChildren}
+            </a>
           ),
+          img: ({ src, alt, ...props }) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={src}
+              alt={alt || ""}
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              {...props}
+            />
+          ),
+        }}
+        urlTransform={(url) => {
+          // 只允许 http / https / mailto, 其它 (javascript:, data:, vbscript: 等) 替换为 #
+          const lower = url.toLowerCase().trim()
+          if (
+            lower.startsWith("javascript:") ||
+            lower.startsWith("data:") ||
+            lower.startsWith("vbscript:") ||
+            lower.startsWith("file:")
+          ) {
+            return "#"
+          }
+          return url
         }}
       >
         {children}

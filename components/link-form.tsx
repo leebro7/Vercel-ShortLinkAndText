@@ -44,6 +44,7 @@ export function LinkForm() {
   const [expiresInHours, setExpiresInHours] = useState("0")
   const [password, setPassword] = useState("")
   const [burnAfterReading, setBurnAfterReading] = useState(false)
+  const [contentFormat, setContentFormat] = useState<"plain" | "markdown">("markdown")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [result, setResult] = useState<{
@@ -77,6 +78,7 @@ export function LinkForm() {
       if (expiresInHours && expiresInHours !== "0") body.expiresInHours = Number(expiresInHours)
       if (isText && password) body.password = password
       if (isText && burnAfterReading) body.burnAfterReading = true
+      if (isText) body.contentFormat = contentFormat
 
       const response = await fetch("/api/items", {
         method: "POST",
@@ -135,18 +137,47 @@ export function LinkForm() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={isText ? "把要分享的文本贴在这里…" : "https://example.com/very/long/url"}
-              rows={isText ? 4 : 2}
               disabled={isLoading}
-              className="font-mono text-sm"
+              className="font-mono text-sm field-sizing-content min-h-16 resize-y max-h-96"
               autoFocus
             />
-            <p className="font-mono text-xs text-muted-foreground -mt-2">
-              {isText
-                ? "检测为:文本分享"
-                : input.trim()
-                ? "检测为:短链接"
-                : "自动识别:链接 / 文本"}
-            </p>
+            <div className="flex items-center justify-between gap-2 -mt-2">
+              <p className="font-mono text-xs text-muted-foreground">
+                {isText
+                  ? "检测为:文本分享"
+                  : input.trim()
+                  ? "检测为:短链接"
+                  : "自动识别:链接 / 文本"}
+              </p>
+              {isText && (
+                <div className="flex items-center gap-1 rounded-md border bg-muted/30 p-0.5 text-xs">
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => setContentFormat("plain")}
+                    className={`px-2 py-0.5 rounded font-mono transition-colors ${
+                      contentFormat === "plain"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    纯文本
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={() => setContentFormat("markdown")}
+                    className={`px-2 py-0.5 rounded font-mono transition-colors ${
+                      contentFormat === "markdown"
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    MD
+                  </button>
+                </div>
+              )}
+            </div>
 
             <Collapsible>
               <CollapsibleTrigger asChild>
