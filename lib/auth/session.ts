@@ -13,7 +13,13 @@
 
 import { getDataProvider } from "../db/provider"
 
-export const SESSION_COOKIE = "admin_session"
+/**
+ * 用 __Host- 前缀: 强制 Secure + Path=/ + 无 Domain 属性。
+ * 这是 RFC 6265bis 的 prefix, 浏览器对这种 cookie 的 Set-Cookie 接受路径更严,
+ * 能绕过部分中间件 (Cloudflare / Vercel 边缘) 对普通 Set-Cookie 的过滤。
+ * 同时对中间人下毒更安全 (因为 prefix 校验强制 Secure+Path)。
+ */
+export const SESSION_COOKIE = "__Host-admin_session"
 export const SESSION_TTL_SECONDS = 24 * 60 * 60
 
 export interface SessionInfo {
