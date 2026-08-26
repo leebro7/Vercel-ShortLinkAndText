@@ -2,28 +2,41 @@
 
 import * as React from "react"
 import { useTheme } from "next-themes"
-import { Moon, Sun, Monitor, Clock } from "lucide-react"
+import { Moon, Sun } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 /**
- * 四态主题切换: 浅色 / 深色 / 跟随系统 / 跟随时间
+ * 夜间 / 白天 双按钮切换
  *
- * - light / dark: 用户手动锁定
- * - system: 跟 OS 设置 (prefers-color-scheme, 多数系统不会随时间变)
- * - time: 跟当前时间 —— 18:00-06:00 暗, 其余亮, 每分钟重新评估
+ * 状态: 'time' | 'light' | 'dark'
+ * - 'time'  (默认, 首次进入): 按当前时间自动 18:00-06:00 暗, 其余亮, 每分钟重评
+ * - 'light' / 'dark': 用户手动锁定, 写 localStorage
  *
- * 状态存 localStorage, 跨会话保留。
+ * 两个按钮: [🌙 夜间] [☀ 白天]
+ *   - time 模式:  当前时间对应的主题高亮 (用户视觉反馈)
+ *   - 手动模式:  用户点过的按钮高亮
+ *
+ * 视觉: 当前选中按钮用 bg-accent + text-accent-foreground; 未选用 text-muted-foreground
  */
 
-const TIME_KEY = "shortlink-theme-mode"
+const KEY = "shortlink-theme-mode"
 
-type Mode = "light" | "dark" | "system" | "time"
+type Mode = "time" | "light" | "dark"
 
-function getStored(): Mode {
-  if (typeof window === "undefined") return "time"
-  const v = localStorage.getItem(TIME_KEY)
-  if (v === "light" || v === "dark" || v === "system" || v === "time") return v
-  return "time"
+function getStored(): Mode | null {
+  if (typeof window === "undefined") return null
+  const v = localStorage.getItem(KEY)
+  if (v === "time" || v === "light" || v === "dark") return v
+  return null
+}
+
+function store(mode: Mode) {
+  try {
+    localStorage.setItem(KEY, mode)
+  } catch {
+    // ignore
+  }
 }
 
 function isNight(date: Date = new Date()): boolean {
@@ -37,7 +50,7 @@ export function ThemeToggle() {
   const [mode, setMode] = React.useState<Mode>("time")
 
   React.useEffect(() => {
-    setMode(getStored())
+    setMode(getStored() ?? "time")
     setMounted(true)
   }, [])
 
@@ -52,59 +65,63 @@ export function ThemeToggle() {
     return () => clearInterval(id)
   }, [mode, mounted, setTheme])
 
-  function changeMode(next: Mode) {
+  function pick(next: "light" | "dark") {
     setMode(next)
-    try {
-      localStorage.setItem(TIME_KEY, next)
-    } catch {
-      // ignore
-    }
-    if (next === "light") setTheme("light")
-    else if (next === "dark") setTheme("dark")
-    else if (next === "time") setTheme(isNight() ? "dark" : "light")
-    // system 留 next-themes 自己处理, 不显式 set
+    store(next)
+    setTheme(next)
   }
+
+  // time 模式: 视觉高亮跟随当前时间; 手动模式: 高亮跟随用户选择
+  const effectiveDark =
+    mode === "dark" || (mode === "time" && isNight())
+  const effectiveLight =
+    mode === "light" || (mode === "time" && !isNight())
 
   if (!mounted) {
     return (
-      <Button variant="ghost" size="icon" aria-label="切换主题" disabled>
-        <Monitor className="h-4 w-4" />
-      </Button>
+      <div className="flex items-center gap-1" aria-label="切换主题">
+        <Button variant="ghost" size="sm" disabled aria-label="夜间">
+          <Moon className="h-3.5 w-3.5" />
+        </Button>
+        <Button variant="ghost" size="sm" disabled aria-label="白天">
+          <Sun className="h-3.5 w-3.5" />
+        </Button>
+      </div>
     )
   }
 
+  // 视觉用 resolvedTheme 保证 SSR/CSR 一致 (用 isNight + mode 已经够, 但读 resolvedTheme 兜底)
   const isDark = resolvedTheme === "dark"
 
-  function nextMode(): Mode {
-    if (mode === "light") return "dark"
-    if (mode === "dark") return "system"
-    if (mode === "system") return "time"
-    return "light"
-  }
-
-  const labelMap: Record<Mode, string> = {
-    light: "浅色(已锁定)",
-    dark: "深色(已锁定)",
-    system: "跟随系统",
-    time: "跟随时间(自动)",
-  }
-  const iconMap: Record<Mode, React.ReactNode> = {
-    light: <Moon className="h-4 w-4" />,
-    dark: <Sun className="h-4 w-4" />,
-    system: <Monitor className="h-4 w-4" />,
-    time: <Clock className="h-4 w-4" />,
-  }
-
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-1" aria-label="切换主题">
       <Button
         variant="ghost"
-        size="icon"
-        aria-label={`当前: ${labelMap[mode]}, 点击切换到 ${labelMap[nextMode()]}`}
-        title={`${labelMap[mode]} (点击切换)`}
-        onClick={() => changeMode(nextMode())}
+        size="sm"
+        aria-label="夜间模式"
+        aria-pressed={effectiveDark}
+        title="夜间模式"
+        onClick={() => pick("dark")}
+        className={cn(
+          "h-7 px-2 text-xs",
+          effectiveDark && "bg-accent text-accent-foreground",
+        )}
       >
-        {iconMap[mode]}
+        <Moon className="mr-1 h-3.5 w-3.5" /> 夜间
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        aria-label="白天模式"
+        aria-pressed={effectiveLight}
+        title="白天模式"
+        onClick={() => pick("light")}
+        className={cn(
+          "h-7 px-2 text-xs",
+          effectiveLight && "bg-accent text-accent-foreground",
+        )}
+      >
+        <Sun className="mr-1 h-3.5 w-3.5" /> 白天
       </Button>
     </div>
   )
