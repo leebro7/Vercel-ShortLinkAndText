@@ -651,6 +651,11 @@ apiApp.get("/api/__debug/session-roundtrip", async (c) => {
     const directSessionValue = JSON.stringify({ username: "admin-direct", createdAt: Date.now() })
     await provider.putRaw(sessionKey, directSessionValue, { ex: 60 })
     const directRead = await provider.getRaw(sessionKey)
+    // 用一个独立 key 再测一次
+    const isolatedKey = "isolated:" + token
+    const isolatedValue = "isolated-test-string"
+    await provider.putRaw(isolatedKey, isolatedValue, { ex: 60 })
+    const isolatedRead = await provider.getRaw(isolatedKey)
     return c.json({
       token,
       tokenLen: token.length,
@@ -661,6 +666,11 @@ apiApp.get("/api/__debug/session-roundtrip", async (c) => {
       directRead,
       directReadEqual: directRead === directSessionValue,
       directReadType: typeof directRead,
+      isolatedKey,
+      isolatedWrite: isolatedValue,
+      isolatedRead,
+      isolatedReadEqual: isolatedRead === isolatedValue,
+      isolatedReadType: typeof isolatedRead,
     })
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
