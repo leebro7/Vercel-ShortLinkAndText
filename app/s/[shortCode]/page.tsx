@@ -1,12 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { Lock, Loader2, AlertCircle, FileText, Flame, Sparkles, Copy, Check } from "lucide-react"
+import { Lock, Loader2, AlertCircle, FileText, Flame, Copy, Check, Eye } from "lucide-react"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Markdown } from "@/components/markdown"
@@ -50,6 +50,7 @@ export default function TextSharePage({
 }) {
   const [shortCode, setShortCode] = useState<string>("")
   const router = useRouter()
+  const pathname = usePathname()
   const searchParams = useSearchParams()
   const [meta, setMeta] = useState<Meta | null>(null)
   const [view, setView] = useState<ViewPayload | null>(null)
@@ -58,12 +59,14 @@ export default function TextSharePage({
   const [error, setError] = useState("")
   const [notFound, setNotFound] = useState(false)
   const [copied, setCopied] = useState(false)
-  // ?format=md|plain 持久化; 缺省用原文 contentFormat
+  // ?format=md|plain 持久化: URL 优先; 缺省用原文 contentFormat (plain 分享冷启动就按 plain 渲染)
   const urlFormat = searchParams.get("format")
   const viewFormat: ContentFormat =
     urlFormat === "plain" || urlFormat === "markdown"
       ? urlFormat
       : (meta?.contentFormat ?? "markdown")
+  // 原文是 plain 时, 不让用户切到 MD (plain 没法 MD 渲染)
+  const canToggleFormat = !!meta && meta.contentFormat === "markdown"
 
   useEffect(() => {
     void params.then((p) => setShortCode(p.shortCode))
@@ -105,13 +108,15 @@ export default function TextSharePage({
 
   function handleFormatChange(next: ContentFormat) {
     const params = new URLSearchParams(searchParams.toString())
-    if (next === meta?.contentFormat) {
+    // 与原文 contentFormat 相同则删 format (URL 干净); 否则记入 query
+    if (meta && next === meta.contentFormat) {
       params.delete("format")
     } else {
       params.set("format", next)
     }
     const qs = params.toString()
-    router.push(qs ? `?${qs}` : "", { scroll: false })
+    // 永远带 pathname, 避免 router.push("") 触发未定义行为
+    router.push(qs ? `${pathname}?${qs}` : pathname, { scroll: false })
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -150,8 +155,6 @@ export default function TextSharePage({
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const canToggleFormat = !!meta && meta.contentFormat === "markdown"
-
   if (notFound) {
     return (
       <main className="min-h-[100dvh] flex items-center justify-center px-6">
@@ -175,12 +178,13 @@ export default function TextSharePage({
           <Link href="/" className="font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground">
             ~/short-link
           </Link>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <FormatToggle
               format={viewFormat}
               onChange={handleFormatChange}
               disabled={!canToggleFormat}
             />
+            <span aria-hidden className="w-px h-4 bg-border" />
             <ThemeToggle />
           </div>
         </header>
@@ -195,11 +199,6 @@ export default function TextSharePage({
               </span>
             )}
             <span>已查看 {view.item.viewCount} 次</span>
-            {viewFormat === "plain" && meta?.contentFormat === "markdown" && (
-              <span className="flex items-center gap-1">
-                <Sparkles className="h-3 w-3" /> 纯文本预览
-              </span>
-            )}
           </div>
           <Card className="mt-6">
             <CardContent className="pt-6">
@@ -217,7 +216,16 @@ export default function TextSharePage({
               )}
             </CardContent>
           </Card>
-          <div className="mt-4 flex items-center justify-end">
+          <div className="mt-4 flex items-center justify-end gap-2">
+            {canToggleFormat && viewFormat === "plain" && (
+              <Button
+                onClick={() => handleFormatChange("markdown")}
+                variant="ghost"
+                size="sm"
+              >
+                <Eye className="mr-1.5 h-3.5 w-3.5" /> 看 MD 预览
+              </Button>
+            )}
             <Button onClick={handleCopy} variant="ghost" size="sm">
               {copied ? (
                 <>
@@ -235,7 +243,6 @@ export default function TextSharePage({
     )
   }
 
-  // 密码表单 (查看前)
   return (
     <div className="min-h-[100dvh] flex flex-col">
       <header className="px-6 py-4 flex items-center justify-between">

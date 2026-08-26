@@ -5,6 +5,7 @@ import { Markdown } from "@/components/markdown"
 
 interface PageProps {
   params: Promise<{ shortCode: string }>
+  searchParams: Promise<{ format?: string }>
 }
 
 export const dynamic = "force-dynamic"
@@ -19,8 +20,9 @@ export async function generateMetadata() {
   }
 }
 
-export default async function EmbedPage({ params }: PageProps) {
+export default async function EmbedPage({ params, searchParams }: PageProps) {
   const { shortCode } = await params
+  const { format: urlFormat } = await searchParams
   const h = await headers()
   const ip =
     h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -55,6 +57,11 @@ export default async function EmbedPage({ params }: PageProps) {
     )
   }
   const item = result.item as TextItem
+  // ?format=md|plain 持久化: URL 优先; 缺省用原文 contentFormat
+  const renderFormat =
+    urlFormat === "plain" || urlFormat === "markdown"
+      ? urlFormat
+      : item.contentFormat
 
   return (
     <main
@@ -70,7 +77,7 @@ export default async function EmbedPage({ params }: PageProps) {
         <p style={{ color: "#666", fontStyle: "italic" }}>受密码保护</p>
       ) : item.burned || result.burned ? (
         <p style={{ color: "#666", fontStyle: "italic" }}>内容已被阅后即焚</p>
-      ) : item.contentFormat === "markdown" ? (
+      ) : renderFormat === "markdown" ? (
         <Markdown>{item.content}</Markdown>
       ) : (
         <pre
