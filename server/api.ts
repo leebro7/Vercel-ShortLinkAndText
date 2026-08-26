@@ -640,17 +640,27 @@ apiApp.get("/api/__debug/kv-roundtrip", async (c) => {
 apiApp.get("/api/__debug/session-roundtrip", async (c) => {
   try {
     const { createSession, readSession } = await import("../lib/auth/session")
+    const provider = await getDataProvider()
     const token = await createSession("admin")
     const sessionKey = `session:${token}`
+    // 通过 createSession 写后, 立刻读
     const r1 = await readSession(token)
     const r2 = await readSession(token)
     const r3 = await readSession(token)
+    // 同时直接 putRaw + getRaw, 排除 readSession 内的 JSON.parse
+    const directSessionValue = JSON.stringify({ username: "admin-direct", createdAt: Date.now() })
+    await provider.putRaw(sessionKey, directSessionValue, { ex: 60 })
+    const directRead = await provider.getRaw(sessionKey)
     return c.json({
       token,
       tokenLen: token.length,
       sessionKey,
-      readAttempts: [r1, r2, r3],
-      allMatch: r1 !== null && r2 !== null && r3 !== null,
+      viaCreateSession: [r1, r2, r3],
+      viaCreateSessionAllNull: r1 === null && r2 === null && r3 === null,
+      directWrite: directSessionValue,
+      directRead,
+      directReadEqual: directRead === directSessionValue,
+      directReadType: typeof directRead,
     })
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
