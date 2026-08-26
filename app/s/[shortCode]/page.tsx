@@ -1,39 +1,16 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { use } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Lock, Loader2, AlertCircle, FileText, Flame, Sparkles, Copy, Check, FileType, FileText as FileTypeIcon } from "lucide-react"
+import { Lock, Loader2, AlertCircle, FileText, Flame, Sparkles, Copy, Check } from "lucide-react"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Markdown } from "@/components/markdown"
-
-function FormatToggle({
-  format,
-  onChange,
-  disabled,
-}: {
-  format: "markdown" | "plain"
-  onChange: (format: "markdown" | "plain") => void
-  disabled: boolean
-}) {
-  return (
-    <select
-      value={format}
-      onChange={(e) => onChange(e.target.value as "markdown" | "plain")}
-      disabled={disabled}
-      className="text-xs font-mono px-2 py-1 rounded border bg-background/50 hover:bg-accent/50 transition-colors focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <option value="markdown">MD</option>
-      <option value="plain">纯文本</option>
-    </select>
-  )
-}
+import type { ContentFormat } from "@/lib/db/types"
 
 interface Meta {
   type: "link" | "text"
@@ -41,7 +18,7 @@ interface Meta {
   hasPassword: boolean
   burnAfterReading: boolean
   burned?: boolean
-  contentFormat: "plain" | "markdown"
+  contentFormat: ContentFormat
   textPreview: string
   expiresAt?: number
   createdAt: number
@@ -53,13 +30,19 @@ interface ViewPayload {
     content: string
     textPreview: string
     viewCount: number
-    contentFormat: "plain" | "markdown"
+    contentFormat: ContentFormat
     createdAt: number
     burned?: boolean
   }
   burned: boolean
 }
 
+/**
+ * 文本分享查看页
+ * - 主题切换: 顶部 ThemeToggle 按钮
+ * - MD/plain 切换: 顶部 select; 切换时更新 ?format= query 持久化(支持刷新/分享)
+ * - 阅后即焚: 服务端删除后, 再次访问 404
+ */
 export default function TextSharePage({
   params,
 }: {
@@ -67,6 +50,7 @@ export default function TextSharePage({
 }) {
   const [shortCode, setShortCode] = useState<string>("")
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [meta, setMeta] = useState<Meta | null>(null)
   const [view, setView] = useState<ViewPayload | null>(null)
   const [password, setPassword] = useState("")
@@ -74,12 +58,20 @@ export default function TextSharePage({
   const [error, setError] = useState("")
   const [notFound, setNotFound] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [viewFormat, setViewFormat] = useState<"markdown" | "plain">(
-    meta?.contentFormat ?? "markdown"
-  )
+  // ?format=md|plain 持久化; 缺省用原文 contentFormat
+  const urlFormat = searchParams.get("format")
+  const viewFormat: ContentFormat =
+    urlFormat === "plain" || urlFormat === "markdown"
+      ? urlFormat
+      : (meta?.contentFormat ?? "markdown")
 
   useEffect(() => {
-    const init = async () => {
+    void params.then((p) => setShortCode(p.shortCode))
+  }, [params])
+
+  useEffect(() => {
+    if (!shortCode) return
+    void (async () => {
       try {
         const res = await fetch(`/api/items/${shortCode}/meta`)
         if (res.status === 404) {
@@ -88,34 +80,38 @@ export default function TextSharePage({
         }
         const data = (await res.json()) as Meta
         setMeta(data)
-        // 如果没密码,直接 view
         if (!data.hasPassword) {
           await loadView()
         }
       } catch {
         setError("加载失败")
       }
-    }
-    init()
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shortCode])
 
   async function loadView() {
     const res = await fetch(`/api/items/${shortCode}/view`, {
       credentials: "include",
     })
-    if (res.status === 401) {
-      // 需要密码
-      return
-    }
+    if (res.status === 401) return
     if (!res.ok) {
       setError("加载失败")
       return
     }
     const data = (await res.json()) as ViewPayload
     setView(data)
-    if (data.item.contentFormat) {
-      setViewFormat(data.item.contentFormat)
+  }
+
+  function handleFormatChange(next: ContentFormat) {
+    const params = new URLSearchParams(searchParams.toString())
+    if (next === meta?.contentFormat) {
+      params.delete("format")
+    } else {
+      params.set("format", next)
     }
+    const qs = params.toString()
+    router.push(qs ? `?${qs}` : "", { scroll: false })
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -154,6 +150,8 @@ export default function TextSharePage({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const canToggleFormat = !!meta && meta.contentFormat === "markdown"
+
   if (notFound) {
     return (
       <main className="min-h-[100dvh] flex items-center justify-center px-6">
@@ -178,7 +176,11 @@ export default function TextSharePage({
             ~/short-link
           </Link>
           <div className="flex items-center gap-2">
-            <FormatToggle format={viewFormat} onChange={setViewFormat} disabled={view.item.contentFormat === "plain"} />
+            <FormatToggle
+              format={viewFormat}
+              onChange={handleFormatChange}
+              disabled={!canToggleFormat}
+            />
             <ThemeToggle />
           </div>
         </header>
@@ -192,13 +194,12 @@ export default function TextSharePage({
                 <Flame className="h-3 w-3" /> 阅后即焚
               </span>
             )}
-            {meta?.contentFormat === "markdown" && (
+            <span>已查看 {view.item.viewCount} 次</span>
+            {viewFormat === "plain" && meta?.contentFormat === "markdown" && (
               <span className="flex items-center gap-1">
-                <Sparkles className="h-3 w-3" /> MD
+                <Sparkles className="h-3 w-3" /> 纯文本预览
               </span>
             )}
-            <span>已查看 {view.item.viewCount} 次</span>
-            <FormatToggle format={viewFormat} onChange={setViewFormat} disabled={view.item.contentFormat === "plain"} />
           </div>
           <Card className="mt-6">
             <CardContent className="pt-6">
@@ -234,17 +235,14 @@ export default function TextSharePage({
     )
   }
 
-  // 密码表单
+  // 密码表单 (查看前)
   return (
     <div className="min-h-[100dvh] flex flex-col">
       <header className="px-6 py-4 flex items-center justify-between">
         <Link href="/" className="font-mono text-sm tracking-tight text-muted-foreground hover:text-foreground">
           ~/short-link
         </Link>
-        <div className="flex items-center gap-2">
-          <FormatToggle format={viewFormat} onChange={setViewFormat} disabled={true} />
-          <ThemeToggle />
-        </div>
+        <ThemeToggle />
       </header>
 
       <main className="flex-1 flex items-center justify-center px-6">
@@ -267,11 +265,6 @@ export default function TextSharePage({
                   {meta.burnAfterReading && (
                     <span className="flex items-center gap-1">
                       <Flame className="h-3 w-3" /> 阅后即焚
-                    </span>
-                  )}
-                  {meta.contentFormat === "markdown" && (
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> MD
                     </span>
                   )}
                 </p>
@@ -317,5 +310,27 @@ export default function TextSharePage({
         </div>
       </main>
     </div>
+  )
+}
+
+function FormatToggle({
+  format,
+  onChange,
+  disabled,
+}: {
+  format: ContentFormat
+  onChange: (format: ContentFormat) => void
+  disabled: boolean
+}) {
+  return (
+    <select
+      value={format}
+      onChange={(e) => onChange(e.target.value as ContentFormat)}
+      disabled={disabled}
+      className="text-xs font-mono px-2 py-1 rounded border bg-background/50 hover:bg-accent/50 transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+    >
+      <option value="markdown">MD</option>
+      <option value="plain">纯文本</option>
+    </select>
   )
 }
