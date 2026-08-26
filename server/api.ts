@@ -163,6 +163,23 @@ apiApp.post("/api/auth/login", async (c) => {
   }
 })
 
+apiApp.post("/api/__debug/force-session", async (c) => {
+  // [DEBUG ONLY] 当环境变量 DEBUG_AUTH=1 启用, 接受任何 username,
+  // 写一个 valid session, 返回 Set-Cookie。用于诊断 cookie 链路。
+  if (process.env.DEBUG_AUTH !== "1") {
+    return c.json({ error: "Not enabled" }, 403)
+  }
+  const body = (await c.req.json().catch(() => null)) as { username?: string } | null
+  const username = body?.username || "admin"
+  const { createSession } = await import("../lib/auth/session")
+  const token = await createSession(username)
+  const setCookie = buildSetCookie(token, isSecure(c))
+  return new Response(JSON.stringify({ ok: true, username, setCookiePreview: setCookie.slice(0, 60) + "..." }), {
+    status: 200,
+    headers: { "content-type": "application/json", "set-cookie": setCookie },
+  })
+})
+
 apiApp.post("/api/auth/logout", async (c) => {
   const token = readSessionCookie(getCookie(c))
   await logout(token)
