@@ -198,35 +198,33 @@ export function LinkForm() {
                 </div>
 
                 {isText && (
-                  <div className="space-y-4 rounded-md border bg-muted/30 p-4">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="password" className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Lock className="h-3 w-3" /> 访问密码
-                      </Label>
-                      <Input
-                        id="password"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="不填则无密码"
-                        disabled={isLoading}
-                        minLength={4}
-                        className="font-mono text-sm"
-                      />
-                    </div>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={burnAfterReading}
-                        onChange={(e) => setBurnAfterReading(e.target.checked)}
-                        disabled={isLoading}
-                        className="h-4 w-4 rounded border-input"
-                      />
-                      <Flame className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span>阅后即焚(首次访问后立即清空)</span>
-                    </label>
+                  <div className="space-y-2">
+                    <Label htmlFor="password" className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Lock className="h-3 w-3" /> 访问密码
+                    </Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="不填则无密码"
+                      disabled={isLoading}
+                      minLength={4}
+                      className="font-mono text-sm"
+                    />
                   </div>
                 )}
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={burnAfterReading}
+                    onChange={(e) => setBurnAfterReading(e.target.checked)}
+                    disabled={isLoading}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  <Flame className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>阅后即焚(首次访问后立即销毁)</span>
+                </label>
               </CollapsibleContent>
             </Collapsible>
 
