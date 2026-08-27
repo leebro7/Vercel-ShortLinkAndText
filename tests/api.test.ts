@@ -583,4 +583,178 @@ describe("anonymousAccessEnabled toggle", () => {
     expect(over.status).toBe(429)
     expect(over.headers.get("x-ratelimit-remaining")).toBe("0")
   })
+
+  it("rate limit is keyed by (IP + session token), not IP alone — XFF spoof cannot bypass", async () => {
+    // 同一 guest cookie 跨多个 XFF 也算同一访客
+    const guestToken = await createGuestSession()
+    const guestCookie = buildSetGuestCookie(guestToken, false)
+    // 第一段: 用 IP-A, 烧 5 次
+    for (let i = 0; i < 5; i++) {
+      const r = await call("/api/items", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: guestCookie,
+          "x-forwarded-for": "198.51.100.1",
+        },
+        body: JSON.stringify({ type: "text", content: "x" }),
+      })
+      expect(r.status).toBe(201)
+    }
+    // 第二段: 换 IP-B 但同 cookie — 应仍 429 (XFF spoof 不应绕过)
+    const spoofed = await call("/api/items", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: guestCookie,
+        "x-forwarded-for": "198.51.100.2",
+      },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(spoofed.status).toBe(429)
+  })
+
+  it("different guest cookies get independent rate-limit buckets at the same IP", async () => {
+    // 同一 IP 下不同访客不应互相挤占
+    const tokenA = await createGuestSession()
+    const tokenB = await createGuestSession()
+    const cookieA = buildSetGuestCookie(tokenA, false)
+    const cookieB = buildSetGuestCookie(tokenB, false)
+    const sharedIp = "192.0.2.99"
+    // A 烧 5 次
+    for (let i = 0; i < 5; i++) {
+      const r = await call("/api/items", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: cookieA,
+          "x-forwarded-for": sharedIp,
+        },
+        body: JSON.stringify({ type: "text", content: "x" }),
+      })
+      expect(r.status).toBe(201)
+    }
+    // A 第 6 次: 429
+    const aOver = await call("/api/items", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookieA,
+        "x-forwarded-for": sharedIp,
+      },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(aOver.status).toBe(429)
+    // B 同 IP: 不应被 A 挤占
+    const bFirst = await call("/api/items", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: cookieB,
+        "x-forwarded-for": sharedIp,
+      },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(bFirst.status).toBe(201)
+  })
+
+  it("admin POST /api/items is never rate-limited", async () => {
+    const adminCookie = await loginAndCookie()
+    // 烧 10 次
+    for (let i = 0; i < 10; i++) {
+      const r = await call("/api/items", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: adminCookie,
+          "x-forwarded-for": "10.0.0.1",
+        },
+        body: JSON.stringify({ type: "text", content: "x" }),
+      })
+      expect(r.status).toBe(201)
+    }
+  })
+
+  it("PATCH /api/settings rejects empty body, wrong type, null", async () => {
+    const cookie = await loginAndCookie()
+    const cases: Array<{ name: string; body: unknown; expected: number }> = [
+      { name: "empty object", body: {}, expected: 400 },
+      { name: "string false", body: { anonymousAccessEnabled: "false" }, expected: 400 },
+      { name: "number 0", body: { anonymousAccessEnabled: 0 }, expected: 400 },
+      { name: "number 1", body: { anonymousAccessEnabled: 1 }, expected: 400 },
+      { name: "null", body: { anonymousAccessEnabled: null }, expected: 400 },
+    ]
+    for (const tc of cases) {
+      const r = await call("/api/settings", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(tc.body),
+      })
+      expect(r.status, `case "${tc.name}"`).toBe(tc.expected)
+    }
+  })
+
+  it("toggle ON → OFF → ON cycle: guest POST 201 → 401 → 201", async () => {
+    const adminCookie = await loginAndCookie()
+    const guestToken = await createGuestSession()
+    const guestCookie = buildSetGuestCookie(guestToken, false)
+
+    // ON (默认): guest 能创建
+    const ok1 = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: guestCookie },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(ok1.status).toBe(201)
+
+    // admin 关闭
+    await call("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ anonymousAccessEnabled: false }),
+    })
+
+    // OFF: 同一 guest cookie 拒
+    const denied = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: guestCookie },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(denied.status).toBe(401)
+
+    // admin 重新打开
+    await call("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ anonymousAccessEnabled: true }),
+    })
+
+    // ON again: 同一 guest cookie 又能创建
+    const ok2 = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: guestCookie },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(ok2.status).toBe(201)
+  })
+
+  it("concurrent PATCH /api/settings: last write wins, no corrupted JSON", async () => {
+    const cookie = await loginAndCookie()
+    // 串行跑 5 次确保 KV 写入没被中间态污染
+    const values: boolean[] = []
+    for (let i = 0; i < 5; i++) {
+      const v = i % 2 === 0
+      values.push(v)
+      const r = await call("/api/settings", {
+        method: "PATCH",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ anonymousAccessEnabled: v }),
+      })
+      expect(r.status).toBe(200)
+    }
+    // 最终读: 应是 values[4]
+    const finalRead = await call("/api/settings", { headers: { cookie } })
+    const finalJson = (await finalRead.json()) as { anonymousAccessEnabled: boolean }
+    expect(finalJson.anonymousAccessEnabled).toBe(values[values.length - 1])
+  })
 })

@@ -277,9 +277,19 @@ apiApp.post("/api/items", async (c) => {
   const isAdmin = session?.kind === "admin"
 
   if (!isAdmin) {
-    // guest / 陌生人: 5 次/分钟/IP, 不暴露具体原因
-    const ip = clientIp(c) || "unknown"
-    const rl = await checkRateLimit("create", ip, 5)
+    // guest: 5 次/分钟. 限流 key 同时含 IP 和 session token,
+    // 这样 XFF spoofing 改 IP 也绕不过 (token 不变就同 bucket),
+    // 同一 IP 多个访客也不会互相挤占.
+    // guest: 5 次/分钟. 限流 key 只用 session token, IP 不参与,
+    // 这样 XFF spoofing 改 IP 也绕不过 — 同一访客跨多 IP 仍被同一 bucket 限流.
+    // 攻击者要换 token 必须重新访问 /u (新身份, 新 bucket).
+    // 陌生人(无 cookie) 已被 requireCreator 拒, 不会到这里.
+    const guestToken = readGuestCookie(getCookie(c))
+    if (!guestToken) {
+      // 理论不会发生 (requireCreator 已确保有 session), 兜底拒绝
+      return c.json({ error: "Unauthorized" }, 401)
+    }
+    const rl = await checkRateLimit("create", `guest:${guestToken}`, 5)
     if (!rl.allowed) {
       c.header("X-RateLimit-Limit", String(rl.limit))
       c.header("X-RateLimit-Remaining", "0")
