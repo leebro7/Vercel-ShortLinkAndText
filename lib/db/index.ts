@@ -120,7 +120,9 @@ export async function createItem(
   }
 
   const provider = await getDataProvider()
-  const existing = await provider.listItems()
+  // 用 listItems() 而不是 provider.listItems() — 业务层 listItems 会懒清理
+  // 过期条目, 让自定义后缀可立即复用刚过期的 shortCode
+  const existing = await listItems()
 
   let shortCode = input.customSuffix || randomShortCode()
   let attempts = 0
@@ -207,7 +209,11 @@ export async function getItem(shortCode: string): Promise<Item | null> {
   const provider = await getDataProvider()
   const item = await provider.getItem(shortCode)
   if (!item) return null
-  if (isExpired(item)) return null
+  if (isExpired(item)) {
+    // 懒清理: 访问时遇到过期条目, 立即删除并释放 shortCode
+    await provider.deleteItem(shortCode)
+    return null
+  }
   return item
 }
 
@@ -215,7 +221,19 @@ export async function listItems(): Promise<Item[]> {
   const provider = await getDataProvider()
   const items = await provider.listItems()
   const now = Date.now()
-  return items.filter((i) => !isExpired(i, now))
+  const alive: Item[] = []
+  const expiredCodes: string[] = []
+  for (const i of items) {
+    if (isExpired(i, now)) expiredCodes.push(i.shortCode)
+    else alive.push(i)
+  }
+  // 懒清理: 列表时扫到过期条目, 批量删除并释放 shortCode
+  if (expiredCodes.length > 0) {
+    await Promise.all(
+      expiredCodes.map((code) => provider.deleteItem(code).catch(() => undefined)),
+    )
+  }
+  return alive
 }
 
 export async function deleteItem(
@@ -262,7 +280,11 @@ export async function updateItem(
   const provider = await getDataProvider()
   const before = await provider.getItem(shortCode)
   if (!before) throw new DomainError("Item not found", 404)
-  if (isExpired(before)) throw new DomainError("Item has expired", 410)
+  if (isExpired(before)) {
+    // 懒清理: 过期条目立即释放 shortCode
+    await provider.deleteItem(shortCode)
+    throw new DomainError("Item has expired", 410)
+  }
 
   // 按类型 narrow,分别构造 next
   let next: Item
@@ -380,7 +402,11 @@ export async function viewItem(
   const provider = await getDataProvider()
   const before = await provider.getItem(shortCode)
   if (!before) return null
-  if (isExpired(before)) return null
+  if (isExpired(before)) {
+    // 懒清理: 过期条目立即释放 shortCode
+    await provider.deleteItem(shortCode)
+    return null
+  }
 
   const now = Date.now()
   const nextCount = before.clickCount + 1

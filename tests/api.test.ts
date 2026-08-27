@@ -234,3 +234,102 @@ describe("legacy paths", () => {
     expect(res.status).toBe(410)
   })
 })
+
+describe("expired shortcode cleanup", () => {
+  it("getItem releases expired entry and returns null", async () => {
+    const { getDataProvider } = await import("@/lib/db/provider")
+    const provider = await getDataProvider()
+    const past = Date.now() - 1000
+    await provider.putItem({
+      id: "x",
+      shortCode: "expired1",
+      expiresAt: past,
+      clickCount: 0,
+      maxClicks: undefined,
+      createdAt: past - 1000,
+      type: "link",
+      originalUrl: "https://example.com",
+      customSuffix: undefined,
+    } as never)
+    const { getItem } = await import("@/lib/db")
+    const found = await getItem("expired1")
+    expect(found).toBeNull()
+    // 过期条目应被释放
+    const after = await provider.getItem("expired1")
+    expect(after).toBeNull()
+  })
+
+  it("listItems releases expired entries", async () => {
+    const { getDataProvider } = await import("@/lib/db/provider")
+    const provider = await getDataProvider()
+    const past = Date.now() - 1000
+    await provider.putItem({
+      id: "x",
+      shortCode: "expired2",
+      expiresAt: past,
+      clickCount: 0,
+      maxClicks: undefined,
+      createdAt: past - 1000,
+      type: "link",
+      originalUrl: "https://example.com",
+      customSuffix: undefined,
+    } as never)
+    const { listItems } = await import("@/lib/db")
+    const items = await listItems()
+    expect(items.find((i) => i.shortCode === "expired2")).toBeUndefined()
+    const after = await provider.getItem("expired2")
+    expect(after).toBeNull()
+  })
+
+  it("custom suffix can be reused after expiry", async () => {
+    const { getDataProvider } = await import("@/lib/db/provider")
+    const provider = await getDataProvider()
+    const past = Date.now() - 1000
+    // 直接放一个过期条目占住 "reuse"
+    await provider.putItem({
+      id: "x",
+      shortCode: "reuse",
+      expiresAt: past,
+      clickCount: 0,
+      maxClicks: undefined,
+      createdAt: past - 1000,
+      type: "link",
+      originalUrl: "https://example.com",
+      customSuffix: "reuse",
+    } as never)
+    // 创建一个新条目并指定 customSuffix: "reuse"
+    const r = await createItem({ type: "link", content: "https://new.com", customSuffix: "reuse" })
+    expect(r.item.shortCode).toBe("reuse")
+    // 旧过期条目应被释放, 新条目占用
+    const after = await provider.getItem("reuse")
+    expect(after).not.toBeNull()
+    expect(after?.type).toBe("link")
+    if (after?.type === "link") {
+      expect(after.originalUrl).toBe("https://new.com")
+    }
+  })
+
+  it("viewItem releases expired entry", async () => {
+    const { getDataProvider } = await import("@/lib/db/provider")
+    const provider = await getDataProvider()
+    const past = Date.now() - 1000
+    await provider.putItem({
+      id: "x",
+      shortCode: "expired3",
+      expiresAt: past,
+      clickCount: 0,
+      maxClicks: undefined,
+      createdAt: past - 1000,
+      type: "text",
+      content: "x",
+      textPreview: "x",
+      contentFormat: "plain",
+      burnAfterReading: false,
+      viewCount: 0,
+    } as never)
+    const v = await viewItem("expired3")
+    expect(v).toBeNull()
+    const after = await provider.getItem("expired3")
+    expect(after).toBeNull()
+  })
+})
