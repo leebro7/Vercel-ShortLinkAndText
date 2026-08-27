@@ -66,7 +66,7 @@ export default function TextSharePage({
   const viewFormat: ContentFormat =
     urlFormat === "plain" || urlFormat === "markdown"
       ? urlFormat
-      : (meta?.contentFormat ?? "markdown")
+      : (meta?.contentFormat ?? "plain")
   // 原文是 plain 时, 不让用户切到 MD (plain 没法 MD 渲染)
   const canToggleFormat = !!meta && meta.contentFormat === "markdown"
 

@@ -17,10 +17,12 @@
 - **文本分享** — 一段文字(支持 Markdown),变成短码
 - **可选密码** — 文本分享可以加一个访问密码
 - **阅后即焚** — 文本分享可以在第一次访问后自动清空
+- **次数限制** — 链接和文本都支持 `maxClicks`;`burnAfterReading: true` 等价于 `maxClicks: 1`
 - **过期** — 1 小时到 30 天,或者永不过期
 - **自定义后缀** — 不想用 6 位随机?自己起一个 3-20 字符的名字
 - **后台** — 列表、搜索、手动编辑、删除、CSV 导出日志
 - **博客嵌入** — 任何博客可以通过 oEmbed / iframe / `<script>` 拉取一段分享
+- **匿名访客入口** — `/u` 颁发临时 guest session,可在限流下创建分享(默认开启,可在 `/admin/settings` 关闭)
 
 ## 设计选择
 
@@ -209,6 +211,9 @@ Data Provider 是抽象的。`lib/db/provider.ts` 按这个顺序自动选:
 | GET    | `/api/qr?url=...&format=svg|png`| 公开  | QR 码 |
 | GET    | `/api/oembed?url=...`           | 公开  | oEmbed 协议,给博客用 |
 | GET    | `/api/health`                   | 公开  | 健康检查 |
+| GET    | `/api/settings`                 | 公开  | 读全局设置(如 `anonymousAccessEnabled`) |
+| PATCH  | `/api/settings`                 | admin | 改全局设置 |
+| GET    | `/u`                            | 公开  | 颁发临时 guest session(匿名访客入口) |
 
 ## 文本分享模式
 
@@ -230,6 +235,15 @@ curl -X POST https://your-host/api/items \
     "expiresInHours": 24
   }'
 ```
+
+`maxClicks` 适用 link 和 text(整数 ≥ 1,达到次数后 `/view` 返回 410)。`burnAfterReading: true` 是 `maxClicks: 1` 的语法糖。
+
+## 匿名访客与限流
+
+- 任何人可以 `GET /u` 拿一个临时 guest session(`__Host-guest_session` cookie),就能 `POST /api/items` 创建分享。
+- guest 创建被限流:每个 IP 每分钟最多 5 次。admin 不受限。
+- `/admin/settings` 关闭 "Allow anonymous access" 后,`/u` 直接 401,且未登录的创建请求也 401(不暴露入口文案)。
+- 三种身份(admin / guest / 陌生人)在 `lib/auth/index.ts:204` `getSessionFromCookie` 里区分,admin 优先。
 
 ## 嵌入到博客
 
@@ -255,6 +269,8 @@ curl -X POST https://your-host/api/items \
 - [x] Hono on Next 16(为后期迁 Workers / D1 留路)
 - [x] MD 渲染(GFM + KaTeX, 禁用 raw HTML)
 - [x] 阅后即焚(服务端可读)
+- [x] 次数限制(`maxClicks`,link/text 都支持)
+- [x] 匿名访客入口(`/u` + 限流,可关)
 - [x] 后台管理(列表/搜索/手动编辑/CSV 日志导出)
 - [x] 博客嵌入(iframe / oEmbed / JS widget)
 - [ ] Cloudflare Workers + D1 完整驱动

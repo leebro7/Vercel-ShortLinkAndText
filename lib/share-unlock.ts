@@ -40,3 +40,32 @@ export async function readShareUnlock(shortCode: string, token: string): Promise
   const v = await provider.getRaw(tokenKey(shortCode, token))
   return v !== null
 }
+
+/** 这个 shortCode 的 unlock cookie 名。 */
+export function shareUnlockCookieName(shortCode: string): string {
+  return `share_unlock_${shortCode}`
+}
+
+/** 构造 Set-Cookie 头。 */
+export function buildShareUnlockCookie(shortCode: string, token: string, secure: boolean): string {
+  const attrs = [
+    `${shareUnlockCookieName(shortCode)}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${TTL_SECONDS}`,
+  ]
+  if (secure) attrs.push("Secure")
+  return attrs.join("; ")
+}
+
+/** 从 cookie 头里读出 unlock token;没有就 null。 */
+export function readShareUnlockCookieToken(cookieHeader: string | null | undefined, shortCode: string): string | null {
+  if (!cookieHeader) return null
+  const name = shareUnlockCookieName(shortCode) + "="
+  const parts = cookieHeader.split(/;\s*/)
+  for (const p of parts) {
+    if (p.startsWith(name)) return decodeURIComponent(p.slice(name.length))
+  }
+  return null
+}

@@ -5,6 +5,7 @@
 
 import type { DataProvider } from "./provider"
 import type { Item, ItemStats, LogEntry, LogAction } from "./types"
+import { aggregateStats } from "./index"
 
 export class InMemoryProvider implements DataProvider {
   private items = new Map<string, Item>()
@@ -57,22 +58,7 @@ export class InMemoryProvider implements DataProvider {
   }
 
   async getStats(): Promise<ItemStats> {
-    const items = Array.from(this.items.values())
-    const now = Date.now()
-    let totalClicks = 0
-    let active = 0
-    let expired = 0
-    for (const i of items) {
-      totalClicks += i.clickCount
-      if (i.expiresAt && i.expiresAt <= now) expired++
-      else active++
-    }
-    return {
-      totalItems: items.length,
-      totalClicks,
-      activeItems: active,
-      expiredItems: expired,
-    }
+    return aggregateStats(Array.from(this.items.values()))
   }
 
   async appendLog(entry: Omit<LogEntry, "id" | "at">): Promise<void> {

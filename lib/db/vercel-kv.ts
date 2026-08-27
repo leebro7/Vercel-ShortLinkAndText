@@ -16,6 +16,7 @@
 import { kv } from "@vercel/kv"
 import type { DataProvider } from "./provider"
 import type { Item, ItemStats, LogEntry, LogAction } from "./types"
+import { aggregateStats } from "./index"
 
 const ITEMS_INDEX_KEY = "items:index"
 const LOGS_INDEX_KEY = "log:index"
@@ -60,22 +61,7 @@ export class VercelKvProvider implements DataProvider {
   }
 
   async getStats(): Promise<ItemStats> {
-    const items = await this.listItems()
-    const now = Date.now()
-    let totalClicks = 0
-    let active = 0
-    let expired = 0
-    for (const i of items) {
-      totalClicks += i.clickCount
-      if (i.expiresAt && i.expiresAt <= now) expired++
-      else active++
-    }
-    return {
-      totalItems: items.length,
-      totalClicks,
-      activeItems: active,
-      expiredItems: expired,
-    }
+    return aggregateStats(await this.listItems())
   }
 
   async appendLog(entry: Omit<LogEntry, "id" | "at">): Promise<void> {

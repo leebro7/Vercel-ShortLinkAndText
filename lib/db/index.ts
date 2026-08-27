@@ -116,6 +116,9 @@ export async function createItem(
     if (typeof input.expiresInHours !== "number" || input.expiresInHours <= 0) {
       throw new DomainError("Expiration time must be a positive number", 400)
     }
+    if (input.expiresInHours > 720) {
+      throw new DomainError("过期时间不能超过 30 天 (720 小时)", 400)
+    }
   }
 
   if (input.maxClicks !== undefined && input.maxClicks !== null) {
@@ -273,6 +276,74 @@ export interface UpdateItemInput {
   shortCode?: string
 }
 
+/** 把 link patch 应用到 before,返回新的 link item。 */
+function applyLinkPatch(before: LinkItem, patch: UpdateItemInput): LinkItem {
+  let originalUrl = before.originalUrl
+  if (patch.content !== undefined) {
+    try {
+      new URL(patch.content)
+    } catch {
+      throw new DomainError("Invalid URL format", 400)
+    }
+    originalUrl = patch.content
+  }
+  const expiresAt = patch.expiresAt === undefined ? before.expiresAt : (patch.expiresAt ?? undefined)
+  const maxClicks =
+    patch.maxClicks === undefined
+      ? before.maxClicks
+      : patch.maxClicks === null
+      ? undefined
+      : patch.maxClicks
+  return {
+    ...before,
+    originalUrl,
+    expiresAt,
+    maxClicks,
+  }
+}
+
+/** 把 text patch 应用到 before,返回新的 text item。 */
+async function applyTextPatch(before: TextItem, patch: UpdateItemInput): Promise<TextItem> {
+  let content = before.content
+  let textPreview = before.textPreview
+  if (patch.content !== undefined) {
+    content = patch.content
+    textPreview = patch.content.slice(0, 100)
+  }
+  const expiresAt = patch.expiresAt === undefined ? before.expiresAt : (patch.expiresAt ?? undefined)
+  let passwordHash: string | undefined = before.passwordHash
+  if (patch.password !== undefined) {
+    if (patch.password === null || patch.password === "") {
+      passwordHash = undefined
+    } else {
+      if (patch.password.length < 4) {
+        throw new DomainError("Password must be at least 4 characters", 400)
+      }
+      passwordHash = await hashPassword(patch.password)
+    }
+  }
+  const burnAfterReading =
+    patch.burnAfterReading === undefined ? before.burnAfterReading : patch.burnAfterReading
+  const maxClicks =
+    patch.maxClicks === undefined
+      ? before.maxClicks
+      : patch.maxClicks === null
+      ? undefined
+      : patch.maxClicks
+  const contentFormat =
+    patch.contentFormat === undefined ? before.contentFormat : patch.contentFormat
+  return {
+    ...before,
+    content,
+    textPreview,
+    expiresAt,
+    passwordHash,
+    burnAfterReading,
+    maxClicks,
+    contentFormat,
+  }
+}
+
 /**
  * 修改一条 item 的可改字段。返回更新后的 item;
  * 任何不合规都抛 DomainError。
@@ -292,72 +363,10 @@ export async function updateItem(
   }
 
   // 按类型 narrow,分别构造 next
-  let next: Item
-  if (before.type === "link") {
-    const linkPatch = patch as UpdateItemInput
-    let originalUrl = before.originalUrl
-    if (linkPatch.content !== undefined) {
-      try {
-        new URL(linkPatch.content)
-      } catch {
-        throw new DomainError("Invalid URL format", 400)
-      }
-      originalUrl = linkPatch.content
-    }
-    const expiresAt = linkPatch.expiresAt === undefined ? before.expiresAt : (linkPatch.expiresAt ?? undefined)
-    const maxClicks =
-      linkPatch.maxClicks === undefined
-        ? before.maxClicks
-        : linkPatch.maxClicks === null
-        ? undefined
-        : linkPatch.maxClicks
-    next = {
-      ...before,
-      originalUrl,
-      expiresAt,
-      maxClicks,
-    } as LinkItem
-  } else {
-    const textPatch = patch as UpdateItemInput
-    let content = before.content
-    let textPreview = before.textPreview
-    if (textPatch.content !== undefined) {
-      content = textPatch.content
-      textPreview = textPatch.content.slice(0, 100)
-    }
-    const expiresAt = textPatch.expiresAt === undefined ? before.expiresAt : (textPatch.expiresAt ?? undefined)
-    let passwordHash: string | undefined = before.passwordHash
-    if (textPatch.password !== undefined) {
-      if (textPatch.password === null || textPatch.password === "") {
-        passwordHash = undefined
-      } else {
-        if (textPatch.password.length < 4) {
-          throw new DomainError("Password must be at least 4 characters", 400)
-        }
-        passwordHash = await hashPassword(textPatch.password)
-      }
-    }
-    const burnAfterReading =
-      textPatch.burnAfterReading === undefined ? before.burnAfterReading : textPatch.burnAfterReading
-    const maxClicks =
-      textPatch.maxClicks === undefined
-        ? before.maxClicks
-        : textPatch.maxClicks === null
-        ? undefined
-        : textPatch.maxClicks
-    const contentFormat =
-      textPatch.contentFormat === undefined ? before.contentFormat : textPatch.contentFormat
-    next = {
-      ...before,
-      content,
-      textPreview,
-      expiresAt,
-      passwordHash,
-      burnAfterReading,
-      maxClicks,
-      contentFormat,
-    } as TextItem
-  }
+  const next: Item =
+    before.type === "link"
+      ? applyLinkPatch(before, patch)
+      : await applyTextPatch(before, patch)
 
   if (patch.shortCode && patch.shortCode !== shortCode) {
     if (!/^[a-zA-Z0-9-]+$/.test(patch.shortCode) || patch.shortCode.length < 3 || patch.shortCode.length > 20) {
@@ -375,9 +384,9 @@ export async function updateItem(
     }
     const collision = await provider.getItem(patch.shortCode)
     if (collision) throw new DomainError("短代码已被占用", 409)
-    next = { ...next, shortCode: patch.shortCode }
+    const renamed = { ...next, shortCode: patch.shortCode }
     await provider.deleteItem(shortCode)
-    await provider.putItem(next)
+    await provider.putItem(renamed)
   } else {
     await provider.putItem(next)
   }
@@ -391,8 +400,30 @@ export async function updateItem(
 }
 
 export async function getStats(): Promise<ItemStats> {
-  const provider = await getDataProvider()
-  return provider.getStats()
+  const items = await listItems()
+  return aggregateStats(items)
+}
+
+/**
+ * 纯函数:把 listItems() 的结果聚合成 ItemStats。
+ * driver 和业务层都复用, 避免在三处重复同一段循环。
+ */
+export function aggregateStats(items: Item[]): ItemStats {
+  const now = Date.now()
+  let totalClicks = 0
+  let active = 0
+  let expired = 0
+  for (const i of items) {
+    totalClicks += i.clickCount
+    if (i.expiresAt && i.expiresAt <= now) expired++
+    else active++
+  }
+  return {
+    totalItems: items.length,
+    totalClicks,
+    activeItems: active,
+    expiredItems: expired,
+  }
 }
 
 /**

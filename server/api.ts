@@ -10,10 +10,27 @@
  */
 
 import { Hono } from "hono"
+import type { Context } from "hono"
 import QRCode from "qrcode"
-import { DomainError, createItem, deleteItem, getItem, getStats, listItems, listRecentLogs, updateItem, viewItem } from "../lib/db"
-import { checkSharePassword } from "../lib/db"
-import { type Item } from "../lib/db"
+import {
+  DomainError,
+  createItem,
+  deleteItem,
+  getItem,
+  getStats,
+  listItems,
+  listRecentLogs,
+  updateItem,
+  viewItem,
+  checkSharePassword,
+  type Item,
+} from "../lib/db"
+import {
+  buildShareUnlockCookie,
+  readShareUnlockCookieToken,
+  verifyAndCreateUnlock,
+  readShareUnlock,
+} from "../lib/share-unlock"
 import {
   SESSION_COOKIE,
   buildClearCookie,
@@ -38,13 +55,15 @@ export const apiApp = new Hono()
 
 /* ──────────────── helpers ──────────────── */
 
-function getCookie(c: { req: { raw?: Request; header: (k: string) => string | undefined } }): string | null {
+type ApiContext = Context
+
+function getCookie(c: ApiContext): string | null {
   // Hono on Vercel: c.req.header 在某些版本下不读 raw.headers。
   // 两路都试, 优先 raw.Request.headers (Hono 不会拦截)。
   return c.req.raw?.headers.get("cookie") ?? c.req.header("cookie") ?? null
 }
 
-function clientIp(c: { req: { raw?: Request; header: (k: string) => string | undefined } }): string | undefined {
+function clientIp(c: ApiContext): string | undefined {
   return (
     c.req.raw?.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -54,32 +73,16 @@ function clientIp(c: { req: { raw?: Request; header: (k: string) => string | und
   )
 }
 
-function clientUa(c: { req: { raw?: Request; header: (k: string) => string | undefined } }): string | undefined {
+function clientUa(c: ApiContext): string | undefined {
   return c.req.raw?.headers.get("user-agent") ?? c.req.header("user-agent") ?? undefined
 }
 
-function isSecure(c: { req: { url: string; raw?: Request; header: (k: string) => string | undefined } }): boolean {
+function isSecure(c: ApiContext): boolean {
   return isSecureRequest({
     url: c.req.url,
     raw: c.req.raw,
     header: c.req.header,
   })
-}
-
-function shareUnlockCookieName(shortCode: string): string {
-  return `share_unlock_${shortCode}`
-}
-
-function buildShareUnlockCookie(shortCode: string, token: string, secure: boolean): string {
-  const attrs = [
-    `${shareUnlockCookieName(shortCode)}=${encodeURIComponent(token)}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    `Max-Age=${5 * 60}`,
-  ]
-  if (secure) attrs.push("Secure")
-  return attrs.join("; ")
 }
 
 function errToResponse(err: unknown): { status: number; body: { error: string } } {
@@ -101,7 +104,7 @@ function errToResponse(err: unknown): { status: number; body: { error: string } 
  * guest 拿同样的 401 提示, 让前端走 /u 入口或登录。
  */
 async function requireAdmin(
-  c: { req: { raw?: Request; path?: string; method?: string; header: (k: string) => string | undefined } },
+  c: ApiContext,
 ): Promise<{ ok: true } | { ok: false; res: Response }> {
   const cookie = getCookie(c)
   const session = await getSessionFromCookie(cookie)
@@ -129,7 +132,7 @@ async function requireAdmin(
  * 无 session 陌生人 401, 不暴露 /u 入口或限流细节。
  */
 async function requireCreator(
-  c: { req: { raw?: Request; path?: string; method?: string; header: (k: string) => string | undefined } },
+  c: ApiContext,
 ): Promise<{ ok: true; session: import("@/lib/auth").SessionInfo } | { ok: false; res: Response }> {
   const cookie = getCookie(c)
   const session = await getSessionFromCookie(cookie)
@@ -145,61 +148,39 @@ async function requireCreator(
   return { ok: true, session }
 }
 
-async function logCtx(c: { req: { raw?: Request; header: (k: string) => string | undefined } }) {
+async function logCtx(c: ApiContext) {
   return { ip: clientIp(c), userAgent: clientUa(c) }
 }
 
 /* ──────────────── auth ──────────────── */
 
 apiApp.post("/api/auth/login", async (c) => {
-  try {
-    const body = (await c.req.json().catch(() => null)) as { username?: string; password?: string } | null
-    if (!body?.username || !body?.password) {
-      return c.json({ error: "用户名和密码不能为空" }, 400)
-    }
-    const result = await login(body.username, body.password, await logCtx(c))
-    // [DEBUG]
-    console.log("[api/auth/login]", {
-      username: body.username,
-      loginOk: result.ok,
-      isSecure: isSecure(c),
-      xfp: c.req.header("x-forwarded-proto"),
-      url: c.req.url,
-    })
-    if (!result.ok) {
-      return c.json({ error: "用户名或密码错误" }, 401)
-    }
-    const setCookie = buildSetCookie(result.token, isSecure(c))
-    console.log("[api/auth/login] set-cookie:", setCookie)
-    // [DEBUG] 显式验证 raw headers 看到 cookie
-    const rawCookie = c.req.raw?.headers.get("cookie")
-    const honoCookie = c.req.header("cookie")
-    console.log("[api/auth/login] incoming cookies:", {
-      raw: rawCookie ? rawCookie.slice(0, 80) : null,
-      hono: honoCookie ? honoCookie.slice(0, 80) : null,
-    })
-    return new Response(JSON.stringify({ success: true, message: "登录成功", username: result.username }), {
-      status: 200,
-      headers: { "content-type": "application/json", "set-cookie": setCookie },
-    })
-  } catch (err) {
-    const e = errToResponse(err)
-    return c.json(e.body, e.status as 400)
+  const body = (await c.req.json().catch(() => null)) as { username?: string; password?: string } | null
+  if (!body?.username || !body?.password) {
+    return c.json({ error: "用户名和密码不能为空" }, 400)
   }
-})
-
-apiApp.post("/api/__debug/force-session", async (c) => {
-  // [DEBUG ONLY] 当环境变量 DEBUG_AUTH=1 启用, 接受任何 username,
-  // 写一个 valid session, 返回 Set-Cookie。用于诊断 cookie 链路。
-  if (process.env.DEBUG_AUTH !== "1") {
-    return c.json({ error: "Not enabled" }, 403)
+  const result = await login(body.username, body.password, await logCtx(c))
+  // [DEBUG]
+  console.log("[api/auth/login]", {
+    username: body.username,
+    loginOk: result.ok,
+    isSecure: isSecure(c),
+    xfp: c.req.header("x-forwarded-proto"),
+    url: c.req.url,
+  })
+  if (!result.ok) {
+    return c.json({ error: "用户名或密码错误" }, 401)
   }
-  const body = (await c.req.json().catch(() => null)) as { username?: string } | null
-  const username = body?.username || "admin"
-  const { createSession } = await import("../lib/auth/session")
-  const token = await createSession(username)
-  const setCookie = buildSetCookie(token, isSecure(c))
-  return new Response(JSON.stringify({ ok: true, username, setCookiePreview: setCookie.slice(0, 60) + "..." }), {
+  const setCookie = buildSetCookie(result.token, isSecure(c))
+  console.log("[api/auth/login] set-cookie:", setCookie)
+  // [DEBUG] 显式验证 raw headers 看到 cookie
+  const rawCookie = c.req.raw?.headers.get("cookie")
+  const honoCookie = c.req.header("cookie")
+  console.log("[api/auth/login] incoming cookies:", {
+    raw: rawCookie ? rawCookie.slice(0, 80) : null,
+    hono: honoCookie ? honoCookie.slice(0, 80) : null,
+  })
+  return new Response(JSON.stringify({ success: true, message: "登录成功", username: result.username }), {
     status: 200,
     headers: { "content-type": "application/json", "set-cookie": setCookie },
   })
@@ -237,14 +218,9 @@ apiApp.post("/api/auth/password", async (c) => {
   if (body.newPassword.length < 6) {
     return c.json({ error: "Password must be at least 6 characters" }, 400)
   }
-  try {
-    const ok = await changeAdminPassword(body.currentPassword, body.newPassword)
-    if (!ok) return c.json({ error: "Current password is incorrect" }, 401)
-    return c.json({ success: true })
-  } catch (err) {
-    if (err instanceof Error) return c.json({ error: err.message }, 400)
-    return c.json({ error: "Failed to update password" }, 500)
-  }
+  const ok = await changeAdminPassword(body.currentPassword, body.newPassword)
+  if (!ok) return c.json({ error: "Current password is incorrect" }, 401)
+  return c.json({ success: true })
 })
 
 /* ──────────────── settings ──────────────── */
@@ -272,77 +248,67 @@ apiApp.patch("/api/settings", async (c) => {
 /* ──────────────── items ──────────────── */
 
 apiApp.get("/api/items", async (c) => {
-  try {
-    const guard = await requireAdmin(c)
-    if (!guard.ok) return guard.res
-    const [items, stats] = await Promise.all([listItems(), getStats()])
-    return c.json({ items, stats })
-  } catch (err) {
-    const e = errToResponse(err)
-    return c.json(e.body, e.status as 400)
-  }
+  const guard = await requireAdmin(c)
+  if (!guard.ok) return guard.res
+  const [items, stats] = await Promise.all([listItems(), getStats()])
+  return c.json({ items, stats })
 })
 
 apiApp.post("/api/items", async (c) => {
-  try {
-    // 三种身份: admin (登录) / guest (/u 入口) / 陌生人 (无 cookie)
-    // admin 不限流; guest + 陌生人 都走 5/min/IP 限流
-    const guard = await requireCreator(c)
-    if (!guard.ok) return guard.res
+  // 三种身份: admin (登录) / guest (/u 入口) / 陌生人 (无 cookie)
+  // admin 不限流; guest + 陌生人 都走 5/min/IP 限流
+  const guard = await requireCreator(c)
+  if (!guard.ok) return guard.res
 
-    const session = guard.session
-    const isAdmin = session?.kind === "admin"
+  const session = guard.session
+  const isAdmin = session?.kind === "admin"
 
-    if (!isAdmin) {
-      // guest / 陌生人: 5 次/分钟/IP, 不暴露具体原因
-      const ip = clientIp(c) || "unknown"
-      const rl = await checkRateLimit("create", ip, 5)
-      if (!rl.allowed) {
-        c.header("X-RateLimit-Limit", String(rl.limit))
-        c.header("X-RateLimit-Remaining", "0")
-        c.header("X-RateLimit-Reset", String(Math.floor(rl.resetAt / 1000)))
-        return c.json({ error: "Unauthorized" }, 401)
-      }
+  if (!isAdmin) {
+    // guest / 陌生人: 5 次/分钟/IP, 不暴露具体原因
+    const ip = clientIp(c) || "unknown"
+    const rl = await checkRateLimit("create", ip, 5)
+    if (!rl.allowed) {
       c.header("X-RateLimit-Limit", String(rl.limit))
-      c.header("X-RateLimit-Remaining", String(rl.remaining))
+      c.header("X-RateLimit-Remaining", "0")
+      c.header("X-RateLimit-Reset", String(Math.floor(rl.resetAt / 1000)))
+      return c.json({ error: "Unauthorized" }, 401)
     }
-
-    const body = (await c.req.json().catch(() => null)) as
-      | {
-          type?: "link" | "text"
-          content?: string
-          customSuffix?: string
-          expiresInHours?: number
-          contentFormat?: "plain" | "markdown"
-          password?: string
-          burnAfterReading?: boolean
-          maxClicks?: number
-        }
-      | null
-    if (!body) return c.json({ error: "Invalid JSON body" }, 400)
-
-    const baseUrl = new URL(c.req.url).origin
-    const result = await createItem(
-      {
-        type: body.type as "link" | "text",
-        content: body.content ?? "",
-        customSuffix: body.customSuffix,
-        expiresInHours: body.expiresInHours,
-        contentFormat: body.contentFormat,
-        password: body.password,
-        burnAfterReading: body.burnAfterReading,
-        maxClicks: body.maxClicks,
-      },
-      { baseUrl, ...(await logCtx(c)) },
-    )
-    return c.json(
-      { ...result.item, shortUrl: result.shortUrl, hasPassword: result.hasPassword },
-      201,
-    )
-  } catch (err) {
-    const e = errToResponse(err)
-    return c.json(e.body, e.status as 400)
+    c.header("X-RateLimit-Limit", String(rl.limit))
+    c.header("X-RateLimit-Remaining", String(rl.remaining))
   }
+
+  const body = (await c.req.json().catch(() => null)) as
+    | {
+        type?: "link" | "text"
+        content?: string
+        customSuffix?: string
+        expiresInHours?: number
+        contentFormat?: "plain" | "markdown"
+        password?: string
+        burnAfterReading?: boolean
+        maxClicks?: number
+      }
+    | null
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400)
+
+  const baseUrl = new URL(c.req.url).origin
+  const result = await createItem(
+    {
+      type: body.type as "link" | "text",
+      content: body.content ?? "",
+      customSuffix: body.customSuffix,
+      expiresInHours: body.expiresInHours,
+      contentFormat: body.contentFormat,
+      password: body.password,
+      burnAfterReading: body.burnAfterReading,
+      maxClicks: body.maxClicks,
+    },
+    { baseUrl, ...(await logCtx(c)) },
+  )
+  return c.json(
+    { ...result.item, shortUrl: result.shortUrl, hasPassword: result.hasPassword },
+    201,
+  )
 })
 
 apiApp.delete("/api/items", async (c) => {
@@ -361,13 +327,8 @@ apiApp.patch("/api/items/:shortCode", async (c) => {
   const shortCode = c.req.param("shortCode")
   const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
   if (!body) return c.json({ error: "Invalid JSON body" }, 400)
-  try {
-    const updated = await updateItem(shortCode, body as never, await logCtx(c))
-    return c.json(updated)
-  } catch (err) {
-    const e = errToResponse(err)
-    return c.json(e.body, e.status as 400)
-  }
+  const updated = await updateItem(shortCode, body as never, await logCtx(c))
+  return c.json(updated)
 })
 
 /**
@@ -418,18 +379,10 @@ apiApp.get("/api/items/:shortCode/view", async (c) => {
     const password = c.req.query("password")
     let ok = false
     if (token) {
-      const { readShareUnlock } = await import("../lib/share-unlock")
       ok = await readShareUnlock(shortCode, token)
     } else if (password !== undefined) {
-      try {
-        await checkSharePassword(item, password)
-        ok = true
-      } catch (err) {
-        if (err instanceof DomainError) {
-          return c.json({ error: err.message }, err.status as 401)
-        }
-        throw err
-      }
+      await checkSharePassword(item, password)
+      ok = true
     } else {
       return c.json({ error: "Password required" }, 401)
     }
@@ -439,16 +392,6 @@ apiApp.get("/api/items/:shortCode/view", async (c) => {
   if (!result) return c.json({ error: "Not found" }, 404)
   return c.json({ item: result.item, burned: result.burned })
 })
-
-function readShareUnlockCookieToken(cookieHeader: string | null, shortCode: string): string | null {
-  if (!cookieHeader) return null
-  const name = shareUnlockCookieName(shortCode) + "="
-  const parts = cookieHeader.split(/;\s*/)
-  for (const p of parts) {
-    if (p.startsWith(name)) return decodeURIComponent(p.slice(name.length))
-  }
-  return null
-}
 
 /**
  * POST /api/items/:shortCode/unlock
@@ -464,22 +407,14 @@ apiApp.post("/api/items/:shortCode/unlock", async (c) => {
   if (item.type !== "text" || !item.passwordHash) {
     return c.json({ error: "This share is not password-protected" }, 400)
   }
-  try {
-    const { verifyAndCreateUnlock } = await import("../lib/share-unlock")
-    const token = await verifyAndCreateUnlock(shortCode, body.password, async (p) => {
-      await checkSharePassword(item, p)
-    })
-    const cookie = buildShareUnlockCookie(shortCode, token, isSecure(c))
-    return new Response(JSON.stringify({ ok: true }), {
-      status: 200,
-      headers: { "content-type": "application/json", "set-cookie": cookie },
-    })
-  } catch (err) {
-    if (err instanceof DomainError) {
-      return c.json({ error: err.message }, err.status as 401)
-    }
-    throw err
-  }
+  const token = await verifyAndCreateUnlock(shortCode, body.password, async (p) => {
+    await checkSharePassword(item, p)
+  })
+  const cookie = buildShareUnlockCookie(shortCode, token, isSecure(c))
+  return new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: { "content-type": "application/json", "set-cookie": cookie },
+  })
 })
 
 /* ──────────────── analytics ──────────────── */
@@ -630,120 +565,6 @@ apiApp.get("/api/health", async (c) => {
   }
 })
 
-/**
- * [DEBUG ONLY] 把请求里所有 header 完整 dump 出来
- * 用于诊断 cookie / auth / IP 等问题
- */
-apiApp.get("/api/__debug/headers", async (c) => {
-  const headers: Record<string, string> = {}
-  const raw = c.req.raw
-  if (raw) {
-    raw.headers.forEach((v, k) => {
-      headers[k] = v
-    })
-  }
-  // 与 c.req.header 对比
-  const viaHono: Record<string, string | undefined> = {
-    cookie: c.req.header("cookie"),
-    "x-forwarded-proto": c.req.header("x-forwarded-proto"),
-    "x-forwarded-for": c.req.header("x-forwarded-for"),
-    "user-agent": c.req.header("user-agent"),
-    host: c.req.header("host"),
-  }
-  return c.json({ viaRaw: headers, viaHono })
-})
-
-/**
- * [DEBUG ONLY] 测试一个最简单的 cookie: 设个 test=ok, 再读回来
- * 不依赖任何业务逻辑, 用于隔离"Set-Cookie 是不是真的被浏览器接受"
- */
-apiApp.get("/api/__debug/set-test-cookie", async (c) => {
-  const cookie = `debug_test=ok; Path=/; HttpOnly; SameSite=Lax; Max-Age=300${isSecure(c) ? "; Secure" : ""}`
-  return new Response(JSON.stringify({ set: cookie, secure: isSecure(c) }), {
-    status: 200,
-    headers: { "content-type": "application/json", "set-cookie": cookie },
-  })
-})
-
-apiApp.get("/api/__debug/check-test-cookie", async (c) => {
-  const cookie = getCookie(c)
-  return c.json({
-    hasDebugTestCookie: Boolean(cookie?.includes("debug_test=ok")),
-    cookiePreview: cookie ? cookie.slice(0, 200) : null,
-    secure: isSecure(c),
-    xfp: c.req.raw?.headers.get("x-forwarded-proto") ?? c.req.header("x-forwarded-proto"),
-  })
-})
-
-/**
- * [DEBUG ONLY] 写一个固定 key, 再读回, 看 Upstash 是否 round-trip 字符串 OK。
- * 用于诊断 "session 写成功但读失败" 的情况。
- */
-apiApp.get("/api/__debug/kv-roundtrip", async (c) => {
-  try {
-    const provider = await getDataProvider()
-    const driver = provider.constructor.name
-    const testKey = "__debug:roundtrip"
-    const testValue = "hello-" + Date.now()
-    await provider.putRaw(testKey, testValue, { ex: 60 })
-    const readBack = await provider.getRaw(testKey)
-    await provider.delRaw(testKey)
-    return c.json({
-      driver,
-      wrote: testValue,
-      readBack,
-      match: readBack === testValue,
-      typeOfReadBack: typeof readBack,
-    })
-  } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
-  }
-})
-
-/**
- * [DEBUG ONLY] 模拟完整 session 生命周期: 写, 立刻读, 多次读。
- * 这才是 force-session 真实路径的镜像 (Hono 端点 → session.ts → provider.putRaw)。
- */
-apiApp.get("/api/__debug/session-roundtrip", async (c) => {
-  try {
-    const { createSession, readSession } = await import("../lib/auth/session")
-    const provider = await getDataProvider()
-    const token = await createSession("admin")
-    const sessionKey = `session:${token}`
-    // 通过 createSession 写后, 立刻读
-    const r1 = await readSession(token)
-    const r2 = await readSession(token)
-    const r3 = await readSession(token)
-    // 同时直接 putRaw + getRaw, 排除 readSession 内的 JSON.parse
-    const directSessionValue = JSON.stringify({ username: "admin-direct", createdAt: Date.now() })
-    await provider.putRaw(sessionKey, directSessionValue, { ex: 60 })
-    const directRead = await provider.getRaw(sessionKey)
-    // 用一个独立 key 再测一次
-    const isolatedKey = "isolated:" + token
-    const isolatedValue = "isolated-test-string"
-    await provider.putRaw(isolatedKey, isolatedValue, { ex: 60 })
-    const isolatedRead = await provider.getRaw(isolatedKey)
-    return c.json({
-      token,
-      tokenLen: token.length,
-      sessionKey,
-      viaCreateSession: [r1, r2, r3],
-      viaCreateSessionAllNull: r1 === null && r2 === null && r3 === null,
-      directWrite: directSessionValue,
-      directRead,
-      directReadEqual: directRead === directSessionValue,
-      directReadType: typeof directRead,
-      isolatedKey,
-      isolatedWrite: isolatedValue,
-      isolatedRead,
-      isolatedReadEqual: isolatedRead === isolatedValue,
-      isolatedReadType: typeof isolatedRead,
-    })
-  } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500)
-  }
-})
-
 /* ──────────────── legacy redirect ──────────────── */
 
 /**
@@ -756,6 +577,14 @@ apiApp.all("/api/links", (c) =>
 apiApp.all("/api/text-share", (c) =>
   c.json({ error: "/api/text-share has been merged into /api/items" }, 410),
 )
+
+/* ──────────────── 统一错误处理 ──────────────── */
+
+apiApp.onError((err, c) => {
+  const e = errToResponse(err)
+  // errToResponse 保证 status 落在 4xx/5xx 范围,这里集中处理而非在每个 handler 撒谎
+  return c.json(e.body, e.status as 400 | 401 | 403 | 404 | 409 | 410 | 500)
+})
 
 export type ApiAppType = typeof apiApp
 // 重新导出供 server 使用

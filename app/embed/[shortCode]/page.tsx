@@ -12,13 +12,7 @@ export const dynamic = "force-dynamic"
 
 // 允许任何站点嵌入。
 // embed.js 用 iframe + sandbox;此页本身只读,无 form / fetch from client,无 cookie。
-export async function generateMetadata() {
-  return {
-    other: {
-      "Content-Security-Policy": "frame-ancestors *",
-    },
-  }
-}
+// 真正的 CSP 响应头在 next.config.mjs 的 headers() 里设,这样能穿透父页的 sandbox。
 
 export default async function EmbedPage({ params, searchParams }: PageProps) {
   const { shortCode } = await params

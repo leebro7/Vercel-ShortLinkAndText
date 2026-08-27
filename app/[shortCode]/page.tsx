@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation"
-import { viewItem } from "@/lib/db"
+import { getItem, viewItem } from "@/lib/db"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertCircle } from "lucide-react"
@@ -21,6 +21,21 @@ export default async function ShortCodePage({ params }: PageProps) {
     h.get("x-real-ip") ||
     undefined
   const ua = h.get("user-agent") || undefined
+
+  // 文本 + 有密码 + 还没有解锁 cookie 时, 不要 viewItem, 否则阅后即焚会在用户输入密码前就被烧掉; 交给 /s/[shortCode] 处理密码流程
+  const cookieHeader = h.get("cookie") ?? null
+  const hasUnlockCookie = cookieHeader
+    ? new RegExp(`(?:^|;\\s*)share_unlock_${shortCode}=`).test(cookieHeader)
+    : false
+  const probe = await getItem(shortCode)
+  if (
+    probe &&
+    probe.type === "text" &&
+    probe.passwordHash &&
+    !hasUnlockCookie
+  ) {
+    redirect(`/s/${shortCode}`)
+  }
 
   const result = await viewItem(shortCode, { ip, userAgent: ua })
 
