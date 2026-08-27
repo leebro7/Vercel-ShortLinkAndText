@@ -22,7 +22,7 @@
 - **自定义后缀** — 不想用 6 位随机?自己起一个 3-20 字符的名字
 - **后台** — 列表、搜索、手动编辑、删除、CSV 导出日志
 - **博客嵌入** — 任何博客可以通过 oEmbed / iframe / `<script>` 拉取一段分享
-- **匿名访客入口** — `/u` 颁发临时 guest session,可在限流下创建分享(默认开启,可在 `/admin/settings` 关闭)
+- **匿名访客入口** — `/u` 颁发临时 guest session,可在 5/min/token 限流下创建分享(默认开启,可在 `/admin/settings` 关闭)
 
 ## 设计选择
 
@@ -170,9 +170,9 @@ DATA_PROVIDER=memory pnpm dev
 跑测试:
 
 ```bash
-pnpm test         # 71 个测试
+pnpm test         # 155 个测试
 pnpm typecheck    # tsc --noEmit
-pnpm build        # 生产构建(14 routes)
+pnpm build        # 生产构建
 ```
 
 ## 数据存储
@@ -240,13 +240,38 @@ curl -X POST https://your-host/api/items \
 
 ## 匿名访客与限流
 
-- 任何人可以 `GET /u` 拿一个临时 guest session(`__Host-guest_session` cookie),就能 `POST /api/items` 创建分享。
-- guest 创建被限流:每个 IP 每分钟最多 5 次,超限返回 `429 Too Many Requests`(带 `X-RateLimit-*` 头)。admin 不受限。
-- `/admin/settings` 关闭 "Allow anonymous access" 后:
-  - `GET /u` 直接 401(不透露原因)
-  - `POST /api/items` 不再接受 guest session,即使 cookie 仍有效;只允许 admin。已颁发的 guest session **不主动撤销**,但下一次创建请求就会被 401 拦截,直到 cookie 自然过期(默认 24h)
-  - `GET /api/settings` 始终需要 admin(用于 admin 切换开关)
-- 三种身份(admin / guest / 陌生人)在 `lib/auth/index.ts` `getSessionFromCookie` 里区分,admin 优先。
+服务暴露三类身份,按 cookie 区分:
+
+| 身份 | 来源 | 能做什么 | 受限流吗 |
+|---|---|---|---|
+| **admin** | 登录后写 `__Host-admin_session` | 一切(含 `/admin/*`, 改设置) | 不受限 |
+| **guest** | `GET /u` 颁发, 写 `__Host-guest_session` | `POST /api/items` 创建分享 | 5/分钟/guest-token |
+| **陌生人** | 啥 cookie 都没有 | 读公开 `/view`、`/meta`、oEmbed | 30/分钟/IP |
+
+### 限流细节
+
+- **guest 创建桶**: key = `rl:create:guest:<token>`, **只用 token,不用 IP**。
+  - 改 `X-Forwarded-For` 头拿不到新桶 — 攻击者要换桶必须重新访问 `/u` 拿新 token。
+  - `/u` 本身也限流 10/分钟/IP, 防止攻击者循环 mint 绕过。
+- **view 桶**: key = `rl:view:<ip>`, 30/分钟/IP。覆盖 `GET /api/items/:shortCode/view`,防 burn-after-reading DoS 与枚举。
+- admin 路径**完全跳过限流**;限流代码在 body 解析之前,降低大 body DoS 面。
+- 超限返 `429` + `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset`(秒)。
+
+### 关闭匿名访问
+
+`/admin/settings` 关闭 "Allow anonymous access" 后:
+
+- `GET /u` 直接 401(不透露原因)
+- `POST /api/items` 不再接受 guest session,即使 cookie 仍有效;只允许 admin
+- 已颁发的 guest session **不主动撤销**(guest 没 user 索引),但下一次创建请求就会被 401 拦截,直到 cookie 自然过期(默认 24h)
+- `GET /api/settings` 始终需要 admin(用于 admin 切换开关)
+- 关闭/开启后 admin 路径**立即生效**(`getSettings` 主动失效 5s 进程内缓存)
+
+### 改密码安全模型
+
+- admin 改密码 → 同一 username 下**所有** admin session 的 KV 记录被遍历删除,偷走的 cookie 立即失效
+- 实现靠 `sessions:byuser:<username>` 索引:每次 `createSession` append,`destroyAllSessions` 遍历
+- 旧注释"满足别人拿到了 cookie 但改密码后失效"从 no-op 变为真实,见 `lib/auth/session.ts:115-138`
 
 ## 嵌入到博客
 

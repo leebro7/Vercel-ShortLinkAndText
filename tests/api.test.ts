@@ -2,7 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { __setDataProviderForTests } from "@/lib/db/provider"
 import { InMemoryProvider } from "@/lib/db/memory"
 import { createItem, viewItem } from "@/lib/db"
-import { buildSetCookie, buildSetGuestCookie, createGuestSession, getAdminUsername, login } from "@/lib/auth"
+import {
+  buildSetCookie,
+  buildSetGuestCookie,
+  createGuestSession,
+  createSession,
+  getAdminUsername,
+  login,
+} from "@/lib/auth"
+import { __resetSettingsCacheForTests } from "@/lib/settings"
 import { apiApp } from "@/server/api"
 
 function call(path: string, init: RequestInit = {}): Promise<Response> {
@@ -11,6 +19,7 @@ function call(path: string, init: RequestInit = {}): Promise<Response> {
 
 beforeEach(() => {
   __setDataProviderForTests(new InMemoryProvider())
+  __resetSettingsCacheForTests()
   process.env.ADMIN_PASSWORD = "test1234"
   process.env.ADMIN_USERNAME = "admin"
 })
@@ -26,6 +35,19 @@ async function loginAndCookie(): Promise<string> {
   const r = await login("admin", "test1234")
   if (!r.ok) throw new Error("login failed")
   return buildSetCookie(r.token, false)
+}
+
+const loginAdmin = loginAndCookie
+
+function randomShort(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+  let s = ""
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)]
+  return s
+}
+
+async function createAdminSessionForTest(username: string): Promise<string> {
+  return createSession(username)
 }
 
 describe("/api/auth", () => {
@@ -756,5 +778,95 @@ describe("anonymousAccessEnabled toggle", () => {
     const finalRead = await call("/api/settings", { headers: { cookie } })
     const finalJson = (await finalRead.json()) as { anonymousAccessEnabled: boolean }
     expect(finalJson.anonymousAccessEnabled).toBe(values[values.length - 1])
+  })
+})
+
+describe("/u route — rate limit bucket & settings gate (logic-level)", () => {
+  it("checkRateLimit rejects the 11th u-mint in a minute", async () => {
+    // /u 是 Next.js 路由, 测不到. 直接验证它在用同一个 bucket key.
+    // 复刻 app/u/route.ts:43 的语义, 用 Hono 路径模拟 (无 cookie 一样 303).
+    // 我们只验证 checkRateLimit 本身.
+    const { checkRateLimit } = await import("@/lib/ratelimit")
+    const ip = `192.0.2.${Math.floor(Math.random() * 250)}`
+    for (let i = 0; i < 10; i++) {
+      const r = await checkRateLimit("u-mint", ip, 10)
+      expect(r.allowed).toBe(true)
+    }
+    const overflow = await checkRateLimit("u-mint", ip, 10)
+    expect(overflow.allowed).toBe(false)
+  })
+
+  it("stale guest cookie + toggle off — settings gate fires regardless of cookie", async () => {
+    // 模拟 app/u/route.ts:47-50 的 settings-first 顺序
+    const cookie = await loginAdmin()
+    await call("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ anonymousAccessEnabled: false }),
+    })
+    // admin 后续 POST /api/items 也应 401 (因为 requireCreator 看的是 settings)
+    const r = await call("/api/items", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: "__Host-guest_session=deadbeef",
+        "x-forwarded-for": "10.0.0.1",
+      },
+      body: JSON.stringify({ type: "link", target: "https://x" }),
+    })
+    expect(r.status).toBe(401)
+  })
+})
+
+describe("GET /api/items/:shortCode/view rate limit", () => {
+  it("returns 429 after 30 views from same IP, even on 404 shortCodes", async () => {
+    // 用 31 次随机 shortCode, 都不存在; 第 31 次应被限流
+    const r0 = await call("/api/items/aaaaaa/view")
+    expect(r0.status).toBe(404)
+    for (let i = 0; i < 29; i++) {
+      await call(`/api/items/${randomShort()}/view`)
+    }
+    const overflow = await call(`/api/items/${randomShort()}/view`)
+    expect(overflow.status).toBe(429)
+  })
+})
+
+describe("password change revokes other admin sessions", () => {
+  it("changing the password invalidates the second cookie", async () => {
+    // admin1 登录, 拿到 cookie1
+    const cookie1 = await loginAdmin()
+    // 同一 admin 在另一处"登录" — 直接调 createSession 模拟第二个 session
+    const secondToken = await createAdminSessionForTest("admin")
+    const cookie2 = `__Host-admin_session=${secondToken}`
+    // admin1 改密码
+    const r = await call("/api/auth/password", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookie1 },
+      body: JSON.stringify({ currentPassword: "test1234", newPassword: "newpass5678" }),
+    })
+    expect(r.status).toBe(200)
+    // cookie2 应失效
+    const probe = await call("/api/settings", { headers: { cookie: cookie2 } })
+    expect(probe.status).toBe(401)
+  })
+})
+
+describe("settings in-process cache", () => {
+  it("PATCH updates the value AND bypasses the cache (next GET sees new value immediately)", async () => {
+    const cookie = await loginAdmin()
+    // 第一次 GET — 写入缓存
+    const r0 = await call("/api/settings", { headers: { cookie } })
+    const j0 = (await r0.json()) as { anonymousAccessEnabled: boolean }
+    const initial = j0.anonymousAccessEnabled
+    // PATCH
+    await call("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ anonymousAccessEnabled: !initial }),
+    })
+    // 第二次 GET 应立即反映新值 (即使缓存还有 5s TTL)
+    const r1 = await call("/api/settings", { headers: { cookie } })
+    const j1 = (await r1.json()) as { anonymousAccessEnabled: boolean }
+    expect(j1.anonymousAccessEnabled).toBe(!initial)
   })
 })

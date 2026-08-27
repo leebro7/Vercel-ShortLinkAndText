@@ -277,12 +277,9 @@ apiApp.post("/api/items", async (c) => {
   const isAdmin = session?.kind === "admin"
 
   if (!isAdmin) {
-    // guest: 5 次/分钟. 限流 key 同时含 IP 和 session token,
-    // 这样 XFF spoofing 改 IP 也绕不过 (token 不变就同 bucket),
-    // 同一 IP 多个访客也不会互相挤占.
     // guest: 5 次/分钟. 限流 key 只用 session token, IP 不参与,
     // 这样 XFF spoofing 改 IP 也绕不过 — 同一访客跨多 IP 仍被同一 bucket 限流.
-    // 攻击者要换 token 必须重新访问 /u (新身份, 新 bucket).
+    // 攻击者要换 token 必须重新访问 /u (新身份, 新 bucket, 而且 /u 本身也限流 10/min).
     // 陌生人(无 cookie) 已被 requireCreator 拒, 不会到这里.
     const guestToken = readGuestCookie(getCookie(c))
     if (!guestToken) {
@@ -392,6 +389,12 @@ apiApp.get("/api/items/:shortCode/meta", async (c) => {
  */
 apiApp.get("/api/items/:shortCode/view", async (c) => {
   const shortCode = c.req.param("shortCode")
+  // view 是公开端点, 按 IP 限流防止枚举 + 防 burn-after-reading DoS
+  const ip = clientIp(c) || "unknown"
+  const rl = await checkRateLimit("view", ip, 30)
+  if (!rl.allowed) {
+    return c.json({ error: "Too Many Requests" }, 429)
+  }
   const item = await getItem(shortCode)
   if (!item) return c.json({ error: "Not found" }, 404)
   if (item.type === "text" && item.passwordHash) {

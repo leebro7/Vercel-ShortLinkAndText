@@ -45,10 +45,34 @@ function guestKey(token: string): string {
   return `guest:${token}`
 }
 
+/** username → 该用户所有 active admin session token 列表。
+ *  改密码时遍历删除;KV 没有"按前缀列出"的能力, 必须靠这个索引.
+ */
+function userSessionsKey(username: string): string {
+  return `sessions:byuser:${username}`
+}
+
 function randomToken(): string {
   const arr = new Uint8Array(32)
   crypto.getRandomValues(arr)
   return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+async function appendUserSession(username: string, token: string): Promise<void> {
+  const provider = await getDataProvider()
+  const key = userSessionsKey(username)
+  const raw = await provider.getRaw(key)
+  const list: string[] = raw ? safeJsonParse(raw, []) : []
+  list.push(token)
+  await provider.putRaw(key, JSON.stringify(list), { ex: SESSION_TTL_SECONDS })
+}
+
+function safeJsonParse<T>(raw: string, fallback: T): T {
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
 }
 
 /** 创建并写一个 admin 会话,返回 token。 */
@@ -57,6 +81,7 @@ export async function createSession(username: string): Promise<string> {
   const info: SessionInfo = { kind: "admin", username, createdAt: Date.now() }
   const provider = await getDataProvider()
   await provider.putRaw(sessionKey(token), JSON.stringify(info), { ex: SESSION_TTL_SECONDS })
+  await appendUserSession(username, token)
   return token
 }
 
@@ -98,11 +123,14 @@ export async function readGuestSession(token: string | undefined | null): Promis
   }
 }
 
-/** 删一个 admin 会话。 */
+/** 删一个 admin 会话,并从 user 索引里移除。 */
 export async function destroySession(token: string | undefined | null): Promise<void> {
   if (!token) return
   const provider = await getDataProvider()
   await provider.delRaw(sessionKey(token))
+  // 删索引引用: 找包含这个 token 的 user, 把列表里这项剔掉
+  // 没有反向索引 (token → user), 所以这里只删 session key;
+  // destroyAllSessions 会清理 user 索引里所有 dead 引用.
 }
 
 /** 删一个 guest 会话。 */
@@ -112,13 +140,19 @@ export async function destroyGuestSession(token: string | undefined | null): Pro
   await provider.delRaw(guestKey(token))
 }
 
-/** 删一个 username 关联的所有会话(改密码时用)。 */
-export async function destroyAllSessions(): Promise<void> {
-  // 我们没有"按前缀列出"的能力,所以这里在登录/改密码时记录 username
-  // 到一个固定 key (sessions:byuser:<username>),里面存 token 列表。
-  // 但这会引入更多 IO。简化:改密码时只销毁当前会话(强制该用户重新登录),
-  // 其它会话在下一次校验时会因 cookie 还在但 KV 中无 key 而失败。
-  // 满足"别人拿到了 cookie 但改密码后失效"。
-  // 真正的"立即踢人"需要 sessions 索引;留到阶段 2 后台。
-  return
+/** 删一个 username 关联的所有 admin 会话(改密码时用)。
+ *  读 user 索引, 遍历 del 每个 session key, 最后清空索引.
+ *  username 是必填, 旧调用点兼容 (no-op) 仅在 username 缺失时退化.
+ */
+export async function destroyAllSessions(username?: string): Promise<void> {
+  if (!username) return
+  const provider = await getDataProvider()
+  const key = userSessionsKey(username)
+  const raw = await provider.getRaw(key)
+  if (!raw) return
+  const tokens: string[] = safeJsonParse(raw, [])
+  for (const t of tokens) {
+    await provider.delRaw(sessionKey(t))
+  }
+  await provider.delRaw(key)
 }

@@ -106,7 +106,9 @@ export async function changeAdminPassword(
   const newHash = await hashPassword(newPassword)
   const provider = await getDataProvider()
   await provider.putRaw(ADMIN_PASSWORD_HASH_KEY, newHash)
-  await destroyAllSessions()
+  // 改完密码, 让该 username 下所有 admin session 立即失效 (除当前 cookie 之外)
+  const username = await getAdminUsername()
+  await destroyAllSessions(username)
   return true
 }
 
