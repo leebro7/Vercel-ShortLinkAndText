@@ -93,6 +93,100 @@ describe("/api/items", () => {
     expect(res.status).toBe(400)
   })
 
+  // 完整覆盖 RESERVED_ROUTES: 只测 [a-zA-Z0-9-]+ 且 length>=3 的项
+  //  (s/u/robots.txt 等被 length/regex 先一步拒, 不属于保留字检查)
+  it.each([
+    // Pages
+    "page",
+    "login",
+    "settings",
+    "analytics",
+    "admin",
+    "share",
+    // View routes (动态短码) — 长度合规的
+    "embed",
+    // API
+    "api",
+    // System (next/_next 中 _next 因字符 _ 不合规; 留 next/public/static)
+    "next",
+    "public",
+    "static",
+    // Common (404/500/.well-known 不合规; 留 health/status)
+    "health",
+    "status",
+  ])("POST rejects reserved customSuffix %s with 400 (reserved keyword)", async (reserved) => {
+    const cookie = await loginAndCookie()
+    const res = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ type: "link", content: "https://x.com", customSuffix: reserved }),
+    })
+    expect(res.status).toBe(400)
+    const j = (await res.json()) as { error?: string }
+    // 应提示是保留字段, 不是普通的"已被占用" 409
+    expect(j.error).toMatch(/保留|reserved/i)
+  })
+
+  it.each([
+    ["Admin", "admin"],
+    ["ADMIN", "admin"],
+    ["Login", "login"],
+    ["Embed", "embed"],
+    ["API", "api"],
+  ])("POST rejects reserved customSuffix case-insensitive (%s -> %s)", async (input, _expected) => {
+    const cookie = await loginAndCookie()
+    const res = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ type: "link", content: "https://x.com", customSuffix: input }),
+    })
+    expect(res.status).toBe(400)
+    const j = (await res.json()) as { error?: string }
+    expect(j.error).toMatch(/保留|reserved/i)
+  })
+
+  // s / u 字符过短 (length < 3) 被先一步拒, 但原因不是"保留"而是"长度不合规"
+  it.each(["s", "u"])("POST rejects too-short customSuffix %s (length, not reserved)", async (short) => {
+    const cookie = await loginAndCookie()
+    const res = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ type: "link", content: "https://x.com", customSuffix: short }),
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it("POST without customSuffix never lands on a reserved random code", async () => {
+    // 100 次无 customSuffix 创建, 任何一次落到 RESERVED_ROUTES 的随机短码
+    // 都会被 createItem 的 while 循环跳过, 但这里只能间接验证:
+    // 创建 100 次都应成功, 且拿到的 shortCode 都不在 RESERVED_ROUTES
+    const { RESERVED_ROUTES } = await import("@/lib/constants")
+    const cookie = await loginAndCookie()
+    for (let i = 0; i < 100; i++) {
+      const res = await call("/api/items", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ type: "link", content: `https://x.com/${i}` }),
+      })
+      expect(res.status).toBe(201)
+      const j = (await res.json()) as { shortCode: string }
+      expect(RESERVED_ROUTES).not.toContain(j.shortCode.toLowerCase())
+    }
+  })
+
+  it("PATCH rejects renaming to a reserved route", async () => {
+    const cookie = await loginAndCookie()
+    // 先创建一条
+    const created = await createItem({ type: "link", content: "https://x.com" })
+    // 试图改名为 "embed"
+    const res = await call(`/api/items/${created.item.shortCode}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ shortCode: "embed" }),
+    })
+    expect(res.status).toBe(400)
+  })
+
   it("DELETE requires auth", async () => {
     const res = await call("/api/items?shortCode=anything", { method: "DELETE" })
     expect(res.status).toBe(401)
