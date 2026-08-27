@@ -103,7 +103,12 @@ export async function createItem(
       throw new DomainError("Custom suffix must be between 3 and 20 characters", 400)
     }
     if (!/^[a-zA-Z0-9-]+$/.test(input.customSuffix)) {
-      throw new DomainError("Custom suffix can only contain letters, numbers, and hyphens", 400)
+      // 显式列出禁用字符: 空格 / ? < > [ ] { } \ 等
+      // (正则已含, 这里只是让维护者一眼看到)
+      throw new DomainError(
+        "Custom suffix can only contain letters, numbers, and hyphens (no spaces, ?, <, >, [, ], {, }, \\)",
+        400,
+      )
     }
   }
 
@@ -356,7 +361,14 @@ export async function updateItem(
 
   if (patch.shortCode && patch.shortCode !== shortCode) {
     if (!/^[a-zA-Z0-9-]+$/.test(patch.shortCode) || patch.shortCode.length < 3 || patch.shortCode.length > 20) {
-      throw new DomainError("Custom suffix must be between 3 and 20 characters", 400)
+      // PATCH 改名的字符/长度限制与 create 保持一致
+      if (patch.shortCode.length < 3 || patch.shortCode.length > 20) {
+        throw new DomainError("Custom suffix must be between 3 and 20 characters", 400)
+      }
+      throw new DomainError(
+        "Custom suffix can only contain letters, numbers, and hyphens (no spaces, ?, <, >, [, ], {, }, \\)",
+        400,
+      )
     }
     if (RESERVED_ROUTES.includes(patch.shortCode.toLowerCase())) {
       throw new DomainError("该短代码是系统保留字段,无法使用", 400)

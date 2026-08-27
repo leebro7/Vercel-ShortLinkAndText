@@ -156,6 +156,64 @@ describe("/api/items", () => {
     expect(res.status).toBe(400)
   })
 
+  // 禁用字符: 空格 / ? < > [ ] { } \
+  // 长度合规 (3 chars) 全部应被拒; 错误文案应明确列出禁用字符
+  it.each([
+    "ab ",        // 空格
+    "ab?",
+    "ab<",
+    "ab>",
+    "ab[",
+    "ab]",
+    "ab{",
+    "ab}",
+    "ab\\",
+    "a/b",        // /  (顺便测一下)
+    "a.b",        // .
+    "a:b",        // :
+    "a;b",        // ;
+    "a,b",        // ,
+    "a\"b",       // "
+    "a'b",        // '
+    "a`b",        // `
+    "a#b",        // #
+    "a&b",        // &
+    "a=b",        // =
+    "a+b",        // +
+    "a@b",        // @
+    "a%b",        // %
+    "a|b",        // |
+    "a^b",        // ^
+    "a~b",        // ~
+    "a_b",        // _
+    "a$b",        // $
+    "中中文",       // 中文 (unicode 不在 [a-zA-Z0-9-])
+  ])("POST rejects customSuffix %s containing forbidden character", async (forbidden) => {
+    const cookie = await loginAndCookie()
+    const res = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ type: "link", content: "https://x.com", customSuffix: forbidden }),
+    })
+    expect(res.status).toBe(400)
+    const j = (await res.json()) as { error?: string }
+    // 错误文案应明确提到禁用字符
+    expect(j.error).toMatch(/letters, numbers, and hyphens/i)
+  })
+
+  it.each([
+    "ab ", "ab?", "ab<", "ab>", "ab[", "ab]", "ab{", "ab}", "ab\\",
+  ])("PATCH rejects renaming to %s (forbidden character)", async (forbidden) => {
+    const cookie = await loginAndCookie()
+    const created = await createItem({ type: "link", content: "https://x.com" })
+    const res = await call(`/api/items/${created.item.shortCode}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ shortCode: forbidden }),
+    })
+    expect(res.status).toBe(400)
+  })
+
   it("POST without customSuffix never lands on a reserved random code", async () => {
     // 100 次无 customSuffix 创建, 任何一次落到 RESERVED_ROUTES 的随机短码
     // 都会被 createItem 的 while 循环跳过, 但这里只能间接验证:
