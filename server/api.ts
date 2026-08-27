@@ -145,6 +145,19 @@ async function requireCreator(
       }),
     }
   }
+  // 匿名访问总开关: 关闭时, 只有 admin 能创建, 已有 guest session 也不放过
+  if (session.kind !== "admin") {
+    const settings = await getSettings()
+    if (!settings.anonymousAccessEnabled) {
+      return {
+        ok: false,
+        res: new Response(JSON.stringify({ error: "Unauthorized" }), {
+          status: 401,
+          headers: { "content-type": "application/json" },
+        }),
+      }
+    }
+  }
   return { ok: true, session }
 }
 
@@ -271,7 +284,7 @@ apiApp.post("/api/items", async (c) => {
       c.header("X-RateLimit-Limit", String(rl.limit))
       c.header("X-RateLimit-Remaining", "0")
       c.header("X-RateLimit-Reset", String(Math.floor(rl.resetAt / 1000)))
-      return c.json({ error: "Unauthorized" }, 401)
+      return c.json({ error: "Too Many Requests" }, 429)
     }
     c.header("X-RateLimit-Limit", String(rl.limit))
     c.header("X-RateLimit-Remaining", String(rl.remaining))

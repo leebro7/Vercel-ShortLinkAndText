@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { __setDataProviderForTests } from "@/lib/db/provider"
 import { InMemoryProvider } from "@/lib/db/memory"
 import { createItem, viewItem } from "@/lib/db"
-import { buildSetCookie, getAdminUsername, login } from "@/lib/auth"
+import { buildSetCookie, buildSetGuestCookie, createGuestSession, getAdminUsername, login } from "@/lib/auth"
 import { apiApp } from "@/server/api"
 
 function call(path: string, init: RequestInit = {}): Promise<Response> {
@@ -483,5 +483,104 @@ describe("expired shortcode cleanup", () => {
     expect(v).toBeNull()
     const after = await provider.getItem("expired3")
     expect(after).toBeNull()
+  })
+})
+
+describe("anonymousAccessEnabled toggle", () => {
+  it("GET /api/settings requires admin", async () => {
+    const r = await call("/api/settings")
+    expect(r.status).toBe(401)
+  })
+
+  it("PATCH /api/settings requires admin", async () => {
+    const r = await call("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ anonymousAccessEnabled: false }),
+    })
+    expect(r.status).toBe(401)
+  })
+
+  it("admin can flip the toggle and read it back", async () => {
+    const cookie = await loginAndCookie()
+    const patch = await call("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ anonymousAccessEnabled: false }),
+    })
+    expect(patch.status).toBe(200)
+    const patchJson = (await patch.json()) as { anonymousAccessEnabled: boolean }
+    expect(patchJson.anonymousAccessEnabled).toBe(false)
+    const get = await call("/api/settings", { headers: { cookie } })
+    const getJson = (await get.json()) as { anonymousAccessEnabled: boolean }
+    expect(getJson.anonymousAccessEnabled).toBe(false)
+  })
+
+  it("non-admin POST /api/items is rejected when toggle is off", async () => {
+    const adminCookie = await loginAndCookie()
+    const patch = await call("/api/settings", {
+      method: "PATCH",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ anonymousAccessEnabled: false }),
+    })
+    expect(patch.status).toBe(200)
+
+    // 没有任何 cookie: 401
+    const noCookie = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(noCookie.status).toBe(401)
+
+    // 持有有效 guest cookie: 仍然 401 (toggle 拦, 不止 /u 拦)
+    const guestToken = await createGuestSession()
+    const guestCookie = buildSetGuestCookie(guestToken, false)
+    const guestRes = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: guestCookie },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(guestRes.status).toBe(401)
+
+    // admin 仍然能创建
+    const adminRes = await call("/api/items", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: adminCookie },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(adminRes.status).toBe(201)
+  })
+
+  it("rate limit returns 429 with X-RateLimit-* headers, not 401", async () => {
+    // 用有效 guest cookie 触发 5/min 限流, 第 6 次应 429
+    const guestToken = await createGuestSession()
+    const guestCookie = buildSetGuestCookie(guestToken, false)
+    const ip = "203.0.113.42"
+    for (let i = 0; i < 5; i++) {
+      const r = await call("/api/items", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: guestCookie,
+          "x-forwarded-for": ip,
+        },
+        body: JSON.stringify({ type: "text", content: "x" }),
+      })
+      expect(r.status).toBe(201)
+      expect(r.headers.get("x-ratelimit-limit")).toBe("5")
+    }
+    // 第 6 次: 超限, 应 429
+    const over = await call("/api/items", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: guestCookie,
+        "x-forwarded-for": ip,
+      },
+      body: JSON.stringify({ type: "text", content: "x" }),
+    })
+    expect(over.status).toBe(429)
+    expect(over.headers.get("x-ratelimit-remaining")).toBe("0")
   })
 })

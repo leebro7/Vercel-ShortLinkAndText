@@ -211,7 +211,7 @@ Data Provider 是抽象的。`lib/db/provider.ts` 按这个顺序自动选:
 | GET    | `/api/qr?url=...&format=svg|png`| 公开  | QR 码 |
 | GET    | `/api/oembed?url=...`           | 公开  | oEmbed 协议,给博客用 |
 | GET    | `/api/health`                   | 公开  | 健康检查 |
-| GET    | `/api/settings`                 | 公开  | 读全局设置(如 `anonymousAccessEnabled`) |
+| GET    | `/api/settings`                 | admin | 读全局设置(如 `anonymousAccessEnabled`) |
 | PATCH  | `/api/settings`                 | admin | 改全局设置 |
 | GET    | `/u`                            | 公开  | 颁发临时 guest session(匿名访客入口) |
 
@@ -241,9 +241,12 @@ curl -X POST https://your-host/api/items \
 ## 匿名访客与限流
 
 - 任何人可以 `GET /u` 拿一个临时 guest session(`__Host-guest_session` cookie),就能 `POST /api/items` 创建分享。
-- guest 创建被限流:每个 IP 每分钟最多 5 次。admin 不受限。
-- `/admin/settings` 关闭 "Allow anonymous access" 后,`/u` 直接 401,且未登录的创建请求也 401(不暴露入口文案)。
-- 三种身份(admin / guest / 陌生人)在 `lib/auth/index.ts:204` `getSessionFromCookie` 里区分,admin 优先。
+- guest 创建被限流:每个 IP 每分钟最多 5 次,超限返回 `429 Too Many Requests`(带 `X-RateLimit-*` 头)。admin 不受限。
+- `/admin/settings` 关闭 "Allow anonymous access" 后:
+  - `GET /u` 直接 401(不透露原因)
+  - `POST /api/items` 不再接受 guest session,即使 cookie 仍有效;只允许 admin。已颁发的 guest session **不主动撤销**,但下一次创建请求就会被 401 拦截,直到 cookie 自然过期(默认 24h)
+  - `GET /api/settings` 始终需要 admin(用于 admin 切换开关)
+- 三种身份(admin / guest / 陌生人)在 `lib/auth/index.ts` `getSessionFromCookie` 里区分,admin 优先。
 
 ## 嵌入到博客
 
