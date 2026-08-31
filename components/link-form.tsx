@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Copy, Check, Loader2, ChevronDown, Lock, Flame, QrCode } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import {
+  GithubCard,
+  GithubCardError,
+  GithubCardLoading,
+  type GithubRepoMeta,
+} from "@/components/github-card"
 
 type ItemType = "link" | "text"
 
@@ -57,9 +63,57 @@ export function LinkForm() {
   } | null>(null)
   const [copied, setCopied] = useState(false)
   const [showQr, setShowQr] = useState(false)
+  // GitHub 仓库预览:debounce 后服务端抓 og:*,失败/非仓库/私有都不打扰用户
+  const [githubPreview, setGithubPreview] = useState<
+    | { state: "loading" }
+    | { state: "ok"; data: GithubRepoMeta }
+    | { state: "error"; reason: string }
+    | null
+  >(null)
+  const githubAbortRef = useRef<AbortController | null>(null)
 
   const detectedType: ItemType = detectType(input)
   const isText = detectedType === "text"
+
+  // GitHub 仓库预览:仅当输入看起来是 github.com/<owner>/<repo> 形式才触发
+  useEffect(() => {
+    const trimmed = input.trim()
+    if (isText || !trimmed) {
+      setGithubPreview(null)
+      githubAbortRef.current?.abort()
+      return
+    }
+    const m = trimmed.match(
+      /^https?:\/\/(?:www\.)?github\.com\/([A-Za-z0-9._-]{1,100})\/([A-Za-z0-9._-]{1,100})\/?$/,
+    )
+    if (!m) {
+      setGithubPreview(null)
+      return
+    }
+    setGithubPreview({ state: "loading" })
+    const timer = window.setTimeout(() => {
+      githubAbortRef.current?.abort()
+      const ctrl = new AbortController()
+      githubAbortRef.current = ctrl
+      void fetch(`/api/github-meta?url=${encodeURIComponent(trimmed)}`, {
+        signal: ctrl.signal,
+      })
+        .then((r) => r.json() as Promise<{ ok: boolean; reason?: string; repo?: GithubRepoMeta }>)
+        .then((data) => {
+          if (ctrl.signal.aborted) return
+          if (data.ok && data.repo) {
+            setGithubPreview({ state: "ok", data: data.repo })
+          } else {
+            setGithubPreview({ state: "error", reason: data.reason ?? "unknown" })
+          }
+        })
+        .catch((err) => {
+          if (ctrl.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) return
+          setGithubPreview({ state: "error", reason: "fetch-failed" })
+        })
+    }, 500)
+    return () => window.clearTimeout(timer)
+  }, [input, isText])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -148,6 +202,13 @@ export function LinkForm() {
               className="font-mono text-sm field-sizing-content min-h-16 resize-y max-h-96"
               autoFocus
             />
+            {githubPreview && (
+              <div className="-mt-2">
+                {githubPreview.state === "loading" && <GithubCardLoading />}
+                {githubPreview.state === "ok" && <GithubCard meta={githubPreview.data} onClick="external" />}
+                {githubPreview.state === "error" && <GithubCardError reason={githubPreview.reason} />}
+              </div>
+            )}
             <div className="flex items-center justify-between gap-2 -mt-2">
               <p className="font-mono text-xs text-muted-foreground">
                 {isText

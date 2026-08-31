@@ -543,6 +543,161 @@ function extractShortCodeFromUrl(input: string): string | null {
   }
 }
 
+/* ──────────────── GitHub 仓库预览 ──────────────── */
+
+/**
+ * GET /api/github-meta?url=<github.com/owner/repo>
+ * 给前端表单做实时卡片预览。MVP 只识别 github.com 上的"仓库"链接:
+ *   https://github.com/<owner>/<repo>   (允许尾部 / 或 ?... 或 #..., 但 path 不能再深)
+ *
+ * 实现:服务端 fetch HTML, 解析 og:* / twitter:* / <title> / description /
+ * avatar 等元数据, 返 JSON。轻量、不存 KV, 也不调 GitHub API (免 token / 免限流配额)。
+ *
+ * 反爬考量:
+ * - 加 User-Agent (默认 fetch 的 UA 会被 GitHub 直接 429)
+ * - 跟随重定向(301 到登录页通常意味着私有仓库, 后面按 404 处理)
+ * - 4MB 截断,够 og:* / <title> 解析,不需要全文档
+ */
+apiApp.get("/api/github-meta", async (c) => {
+  const raw = c.req.query("url")
+  if (!raw) return c.json({ error: "Missing url" }, 400)
+  const parsed = parseGithubRepoUrl(raw)
+  if (!parsed) return c.json({ ok: false, reason: "not-a-github-repo-url" }, 400)
+
+  const pageUrl = `https://github.com/${parsed.owner}/${parsed.repo}`
+  try {
+    const res = await fetch(pageUrl, {
+      // Next.js fetch:加 revalidate=0 + 显式 headers
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (compatible; short-link-github-preview/1.0; +https://github.com)",
+        accept: "text/html,application/xhtml+xml",
+        "accept-language": "en-US,en;q=0.9",
+      },
+      redirect: "follow",
+      cache: "no-store",
+    })
+    if (!res.ok) {
+      // 404 = 仓库不存在或私有; 429 = 限流。前端都用同一个"取不到"提示。
+      return c.json({ ok: false, reason: res.status === 429 ? "rate-limited" : "not-found" }, 200)
+    }
+    const html = await res.text()
+    const meta = parseGithubMeta(html, parsed.owner, parsed.repo)
+    return c.json({ ok: true, repo: { ...meta, owner: parsed.owner, repo: parsed.repo, url: pageUrl } })
+  } catch {
+    return c.json({ ok: false, reason: "fetch-failed" }, 200)
+  }
+})
+
+function parseGithubRepoUrl(input: string): { owner: string; repo: string } | null {
+  let u: URL
+  try {
+    u = new URL(input)
+  } catch {
+    return null
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") return null
+  if (u.hostname !== "github.com" && u.hostname !== "www.github.com") return null
+  // path 形如 /owner/repo, 去掉首尾 /
+  const segs = u.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean)
+  if (segs.length !== 2) return null
+  const [owner, repo] = segs
+  // github owner/repo 字符集:字母数字 . _ -,长度 1-100
+  if (!/^[A-Za-z0-9._-]{1,100}$/.test(owner)) return null
+  if (!/^[A-Za-z0-9._-]{1,100}$/.test(repo)) return null
+  return { owner, repo }
+}
+
+interface GithubRepoMeta {
+  title: string
+  description: string
+  image: string | null
+  avatar: string | null
+  language: string | null
+  stars: string | null
+  forks: string | null
+}
+
+function parseGithubMeta(html: string, owner: string, repo: string): GithubRepoMeta {
+  // 1) og:* / twitter:* 是最稳的来源(每个 repo 都有)
+  const title =
+    metaContent(html, "og:title") ??
+    metaContent(html, "twitter:title") ??
+    `${owner}/${repo}`
+  const description =
+    metaContent(html, "og:description") ??
+    metaContent(html, "twitter:description") ??
+    metaContent(html, "description") ??
+    ""
+  const image = metaContent(html, "og:image") ?? metaContent(html, "twitter:image")
+  const avatar = metaNameContent(html, "octolytics-actor-image")
+
+  // 2) stars / forks / language github 写在 <span id="repo-stars-counter-star"> 等
+  //    id 在历史版本里换过名, 用 og: 配合多 id fallback 比较稳。
+  const stars = idText(html, "repo-stars-counter-star") ?? ariaLabelText(html, "star")
+  const forks = idText(html, "repo-network-counter") ?? ariaLabelText(html, "fork")
+  const language =
+    metaContent(html, "og:description")?.match(/·\s*([A-Za-z+#\- ]+?)\s*·/)?.[1]?.trim() ??
+    null
+
+  return {
+    title,
+    description,
+    image: image ? absolutize(image, "https://github.com") : null,
+    avatar: avatar ? absolutize(avatar, "https://github.com") : null,
+    language,
+    stars,
+    forks,
+  }
+}
+
+function metaContent(html: string, property: string): string | null {
+  // 兼容 property= 和 name= 两种; 不区分大小写; 取 content="..."
+  const re = new RegExp(
+    `<meta\\s+[^>]*?(?:property|name)\\s*=\\s*["']${escapeRe(property)}["'][^>]*?content\\s*=\\s*["']([^"']*)["']`,
+    "i",
+  )
+  return html.match(re)?.[1]?.trim() || null
+}
+
+function metaNameContent(html: string, name: string): string | null {
+  const re = new RegExp(
+    `<meta\\s+[^>]*?name\\s*=\\s*["']${escapeRe(name)}["'][^>]*?content\\s*=\\s*["']([^"']*)["']`,
+    "i",
+  )
+  return html.match(re)?.[1]?.trim() || null
+}
+
+function idText(html: string, id: string): string | null {
+  // 找 <span id="X" ... >...</span>; github 把数字直接放 innerText
+  const re = new RegExp(
+    `<span[^>]*?id\\s*=\\s*["']${escapeRe(id)}["'][^>]*?>([^<]*)<`,
+    "i",
+  )
+  return html.match(re)?.[1]?.trim() || null
+}
+
+function ariaLabelText(html: string, keyword: string): string | null {
+  // 兜底: <a href="/owner/repo/stargazers" ... aria-label="X users starred this repository">X</a>
+  const re = new RegExp(
+    `aria-label\\s*=\\s*["'][^"']*${escapeRe(keyword)}[^"']*["'][^>]*?>([^<]*)<`,
+    "i",
+  )
+  return html.match(re)?.[1]?.trim() || null
+}
+
+function absolutize(url: string, base: string): string {
+  try {
+    return new URL(url, base).toString()
+  } catch {
+    return url
+  }
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 /* ──────────────── QR ──────────────── */
 
 /**

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "GitHub 仓库卡片预览",
+    "output": "github-preview-architecture.html",
+    "quality_profile": "showcase",
+    "locale": "zh-CN"
+  },
+  "components": [
+    { "id": "user", "type": "external", "label": "用户", "sublabel": "浏览器", "pos": [40, 380], "size": [120, 60] },
+    { "id": "form", "type": "frontend", "label": "LinkForm", "sublabel": "表单组件", "pos": [240, 380], "size": [150, 60], "tag": "debounce 500ms" },
+    { "id": "endpoint", "type": "backend", "label": "/api/github-meta", "sublabel": "Hono route", "pos": [470, 380], "size": [180, 60], "tag": "validate URL" },
+    { "id": "parser", "type": "backend", "label": "parseGithubMeta", "sublabel": "HTML → JSON", "pos": [700, 180], "size": [170, 60], "tag": "og:* / twitter:*" },
+    { "id": "github", "type": "external", "label": "github.com", "sublabel": "HTML 抓取", "pos": [980, 380], "size": [160, 60] },
+    { "id": "card", "type": "frontend", "label": "GithubCard", "sublabel": "卡片渲染", "pos": [240, 560], "size": [150, 60] },
+    { "id": "abort", "type": "security", "label": "AbortController", "sublabel": "取消过期请求", "pos": [470, 560], "size": [180, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Vercel: Next.js + Hono", "wraps": ["form", "endpoint", "parser", "card", "abort"] }
+  ],
+  "connections": [
+    { "id": "user-pastes", "from": "user", "to": "form", "label": "粘贴 URL" },
+    { "id": "form-fetches", "from": "form", "to": "endpoint", "label": "GET ?url=...", "labelDy": -42 },
+    { "id": "endpoint-fetches", "from": "endpoint", "to": "github", "label": "fetch HTML", "variant": "emphasis" },
+    { "id": "github-html", "from": "github", "to": "parser", "label": "HTML", "variant": "dashed" },
+    { "id": "parser-ok", "from": "parser", "to": "endpoint", "label": "{ok, repo}" },
+    { "id": "endpoint-json", "from": "endpoint", "to": "form", "label": "JSON", "labelDy": -42 },
+    { "id": "form-renders", "from": "form", "to": "card", "label": "set meta", "labelDy": 18 },
+    { "id": "form-aborts", "from": "form", "to": "abort", "label": "取消过期" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "前端", "items": ["LinkForm 检测 URL 匹配 github.com/owner/repo", "500ms debounce + AbortController 取消过期请求", "GithubCard 渲染头像 / 标题 / 描述 / stars / forks"] },
+    { "dot": "emerald", "title": "后端", "items": ["Hono 端点校验 URL 必须是 github.com/owner/repo", "服务端 fetch HTML, 解析 og:* / twitter:*", "按 og:description 正则提取 language"] },
+    { "dot": "rose", "title": "取舍", "items": ["不调 GitHub API, 免 token / 免 60 req/hr 限制", "不存 KV, 实时拉, schema 零改动", "私有仓库统一报 not-found, 防探测"] }
+  ]
+}
