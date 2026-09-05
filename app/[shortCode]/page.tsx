@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { headers } from "next/headers"
+import { TextShareView } from "@/components/text-share-view"
 
 interface PageProps {
   params: Promise<{
@@ -95,13 +96,7 @@ export default async function ShortCodePage({ params }: PageProps) {
           shared · {new Date(item.createdAt).toLocaleDateString("zh-CN")}
         </p>
         <h1 className="mt-4 text-2xl font-semibold">文本分享</h1>
-        <Card className="mt-6">
-          <CardContent className="pt-6">
-            <div className="whitespace-pre-wrap break-words font-serif text-base leading-relaxed">
-              {item.content}
-            </div>
-          </CardContent>
-        </Card>
+        <TextShareView content={item.content} />
         <p className="mt-4 font-mono text-xs text-muted-foreground text-right">
           已查看 {item.viewCount} 次
         </p>
