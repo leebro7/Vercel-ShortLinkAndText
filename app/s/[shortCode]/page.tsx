@@ -266,9 +266,9 @@ export default function TextSharePage({
             )}
             <Button
               onClick={handleCopy}
-              variant="ghost"
+              variant="outline"
               size="sm"
-              className="text-muted-foreground hover:text-foreground"
+              className="border-primary/30 text-primary hover:bg-primary/5 hover:text-primary hover:border-primary/50"
             >
               {copied ? (
                 <>
